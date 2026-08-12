@@ -8,6 +8,12 @@ on:
     - cron: '30 14 * * *'   # 8:00 PM IST — evening post
   workflow_dispatch: {}      # lets you trigger it manually from the Actions tab to test
 
+# Ensures overlapping runs queue up one after another instead of racing
+# to save their changes at the same time.
+concurrency:
+  group: daily-post
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
@@ -37,6 +43,7 @@ jobs:
           git config user.email "rootedandrich-bot@users.noreply.github.com"
           git add posts/
           git commit -m "Post $(cat posts/latest.txt)" || echo "Nothing to commit"
+          git pull --rebase --autostash
           git push
 
       - name: Publish to Instagram

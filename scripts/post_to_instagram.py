@@ -77,8 +77,14 @@ def publish_container(ig_user_id, token, container_id):
 
 
 def main():
-    ig_user_id = os.environ["IG_USER_ID"]
-    token = os.environ["IG_ACCESS_TOKEN"]
+    ig_user_id = os.environ["IG_USER_ID"].strip()
+    token = os.environ["IG_ACCESS_TOKEN"].strip()
+
+    # Safe diagnostic: reveals length and whitespace issues WITHOUT ever
+    # printing the actual secret value.
+    print(f"IG_USER_ID length: {len(ig_user_id)}")
+    print(f"IG_ACCESS_TOKEN length: {len(token)}")
+    print(f"IG_ACCESS_TOKEN starts with 'IGAA': {token.startswith('IGAA')}")
 
     slug = get_slug()
     image_url = build_image_url(slug)

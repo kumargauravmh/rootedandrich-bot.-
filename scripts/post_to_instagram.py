@@ -18,6 +18,7 @@ import time
 import requests
 
 GRAPH_VERSION = "v21.0"
+GRAPH_HOST = "https://graph.instagram.com"
 
 
 def get_slug():
@@ -36,7 +37,7 @@ def read_caption(slug):
 
 
 def create_media_container(ig_user_id, token, image_url, caption):
-    url = f"https://graph.facebook.com/{GRAPH_VERSION}/{ig_user_id}/media"
+    url = f"{GRAPH_HOST}/{GRAPH_VERSION}/{ig_user_id}/media"
     resp = requests.post(url, data={
         "image_url": image_url,
         "caption": caption,
@@ -49,7 +50,7 @@ def create_media_container(ig_user_id, token, image_url, caption):
 
 
 def wait_until_ready(container_id, token, timeout=60):
-    url = f"https://graph.facebook.com/{GRAPH_VERSION}/{container_id}"
+    url = f"{GRAPH_HOST}/{GRAPH_VERSION}/{container_id}"
     waited = 0
     while waited < timeout:
         resp = requests.get(url, params={"fields": "status_code", "access_token": token})
@@ -65,7 +66,7 @@ def wait_until_ready(container_id, token, timeout=60):
 
 
 def publish_container(ig_user_id, token, container_id):
-    url = f"https://graph.facebook.com/{GRAPH_VERSION}/{ig_user_id}/media_publish"
+    url = f"{GRAPH_HOST}/{GRAPH_VERSION}/{ig_user_id}/media_publish"
     resp = requests.post(url, data={
         "creation_id": container_id,
         "access_token": token,
@@ -80,8 +81,6 @@ def main():
     ig_user_id = os.environ["IG_USER_ID"].strip()
     token = os.environ["IG_ACCESS_TOKEN"].strip()
 
-    # Safe diagnostic: reveals length and whitespace issues WITHOUT ever
-    # printing the actual secret value.
     print(f"IG_USER_ID length: {len(ig_user_id)}")
     print(f"IG_ACCESS_TOKEN length: {len(token)}")
     print(f"IG_ACCESS_TOKEN starts with 'IGAA': {token.startswith('IGAA')}")

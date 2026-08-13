@@ -218,13 +218,16 @@ def render_post(image_text, out_path):
 
     y = start_y
     for line in lines:
-        draw.text((left_margin, y), line, font=font, fill=WHITE)
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_width = bbox[2] - bbox[0]
+        x = (SIZE - line_width) // 2
+        draw.text((x, y), line, font=font, fill=WHITE)
         y += line_height
 
-    draw.line([(left_margin, 70), (left_margin + 40, 70)], fill=GOLD, width=4)
-
     font_small = ImageFont.truetype(FONT_REG, 26)
-    draw.text((left_margin, SIZE - 90), HANDLE, font=font_small, fill=MUTED)
+    handle_bbox = draw.textbbox((0, 0), HANDLE, font=font_small)
+    handle_width = handle_bbox[2] - handle_bbox[0]
+    draw.text(((SIZE - handle_width) // 2, SIZE - 90), HANDLE, font=font_small, fill=MUTED)
 
     img.save(out_path, "PNG", quality=100)
 

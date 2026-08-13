@@ -31,8 +31,6 @@ def build_image_url(slug):
 
 
 def read_caption(slug):
-    # generate_image.py already appends this post's tailored hashtags
-    # directly into the caption file, so we just read it as-is.
     with open(f"posts/caption_{slug}.txt", "r", encoding="utf-8") as f:
         return f.read().strip()
 
@@ -44,6 +42,8 @@ def create_media_container(ig_user_id, token, image_url, caption):
         "caption": caption,
         "access_token": token,
     })
+    if not resp.ok:
+        print(f"Meta API rejected the request. Full response: {resp.text}")
     resp.raise_for_status()
     return resp.json()["id"]
 
@@ -70,6 +70,8 @@ def publish_container(ig_user_id, token, container_id):
         "creation_id": container_id,
         "access_token": token,
     })
+    if not resp.ok:
+        print(f"Meta API rejected the publish request. Full response: {resp.text}")
     resp.raise_for_status()
     return resp.json()
 

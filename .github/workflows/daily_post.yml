@@ -3,11 +3,10 @@ name: Rooted and Rich - 3x Daily Post
 on:
   schedule:
     # All times in UTC. IST = UTC + 5:30
-    - cron: '30 2 * * *'    # 8:00 AM IST — morning post
-    - cron: '30 9 * * *'    # 3:00 PM IST — afternoon post
-    - cron: '30 14 * * *'   # 8:00 PM IST — evening post
+    - cron: '0 19 * * *'    # 12:30 AM IST — catches late US evening scrollers
+    - cron: '30 0 * * *'    # 6:00 AM IST — early peak window
+    - cron: '30 3 * * *'    # 9:00 AM IST — highest peak window
   workflow_dispatch: {}      # lets you trigger it manually from the Actions tab to test
-
 # Ensures overlapping runs queue up one after another instead of racing
 # to save their changes at the same time.
 concurrency:

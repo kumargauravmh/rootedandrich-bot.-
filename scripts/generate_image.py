@@ -213,22 +213,19 @@ def render_post(image_text, out_path):
     line_height = int(font_size * 1.55)
 
     lines = wrap_and_measure(draw, image_text, font, max_width)
-    total_h = len(lines) * line_height
-    start_y = (SIZE - total_h) // 2 - 40
+
+    # Fixed starting position — NOT based on this post's content length.
+    # This is what keeps every post starting at the exact same height in
+    # the grid, instead of short posts and long posts landing differently.
+    start_y = int(SIZE * 0.30)
 
     y = start_y
     for line in lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        line_width = bbox[2] - bbox[0]
-        x = (SIZE - line_width) // 2
-        draw.text((x, y), line, font=font, fill=WHITE)
+        draw.text((left_margin, y), line, font=font, fill=WHITE)
         y += line_height
 
     font_small = ImageFont.truetype(FONT_REG, 26)
-    handle_bbox = draw.textbbox((0, 0), HANDLE, font=font_small)
-    handle_width = handle_bbox[2] - handle_bbox[0]
-    draw.text(((SIZE - handle_width) // 2, SIZE - 90), HANDLE, font=font_small, fill=MUTED)
-
+    draw.text((left_margin, SIZE - 90), HANDLE, font=font_small, fill=MUTED)
     img.save(out_path, "PNG", quality=100)
 
 

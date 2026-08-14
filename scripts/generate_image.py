@@ -85,7 +85,7 @@ def generate_via_ai():
         print(f"AI generation failed ({e}) — falling back to content bank.")
         return None
 
-BLACK = "#0D0D0D"
+BLACK = "#000000"
 WHITE = "#F0F0EC"
 MUTED = "#6B6B65"
 GOLD = "#C9A84C"
@@ -217,7 +217,7 @@ def render_post(image_text, out_path):
     img = Image.new("RGB", (SIZE, SIZE), BLACK)
     draw = ImageDraw.Draw(img)
 
-    left_margin = 90
+    left_margin = 130
     max_width = SIZE - (left_margin * 2)
     font_size = 38
     font = ImageFont.truetype(FONT_REG, font_size)

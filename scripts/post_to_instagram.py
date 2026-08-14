@@ -36,13 +36,17 @@ def read_caption(slug):
         return f.read().strip()
 
 
-def create_media_container(ig_user_id, token, image_url, caption):
+def create_media_container(ig_user_id, token, image_url, caption, media_type=None):
     url = f"{GRAPH_HOST}/{GRAPH_VERSION}/{ig_user_id}/media"
-    resp = requests.post(url, data={
+    data = {
         "image_url": image_url,
-        "caption": caption,
         "access_token": token,
-    })
+    }
+    if caption:
+        data["caption"] = caption
+    if media_type:
+        data["media_type"] = media_type
+    resp = requests.post(url, data=data)
     if not resp.ok:
         print(f"Meta API rejected the request. Full response: {resp.text}")
     resp.raise_for_status()
@@ -98,7 +102,21 @@ def main():
     print("Container ready, publishing...")
 
     result = publish_container(ig_user_id, token, container_id)
-    print(f"Published: {result}")
+    print(f"Published to feed: {result}")
+
+    # Also share the same image to Stories automatically. If this fails for
+    # any reason, it should NOT count as an overall failure - the feed post
+    # already succeeded, and that's the important one.
+    try:
+        story_container_id = create_media_container(
+            ig_user_id, token, image_url, caption=None, media_type="STORIES"
+        )
+        print(f"Story container created: {story_container_id}")
+        wait_until_ready(story_container_id, token)
+        story_result = publish_container(ig_user_id, token, story_container_id)
+        print(f"Published to story: {story_result}")
+    except Exception as e:
+        print(f"Story publish failed (feed post still succeeded): {e}")
 
 
 if __name__ == "__main__":

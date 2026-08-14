@@ -20,13 +20,24 @@ from PIL import Image, ImageDraw, ImageFont
 
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 
-AI_PROMPT = """You are the ghostwriter for the Instagram account @rootedand.rich \
-— a page about life wisdom, spirituality, faith, and wise money stewardship, for \
-men aged 18-34 in India and the US.
+AI_PROMPT = """You write for @rootedand.rich — but you're not a quote generator. You're \
+a guy who's actually wrestled with faith, discipline, and money, and you're talking \
+straight to men aged 18-34 in India and the US who need to hear it like a real \
+conversation, not a greeting card.
 
-Voice: warm but direct, spiritually grounded using general terms like "faith", \
-"God", "prayer", "stewardship" (not tied to one specific religion, so it \
-resonates broadly), practical about money and discipline, never preachy.
+Voice rules — follow these closely:
+- Talk directly TO the reader using "you" — never "men" in the abstract third person
+- Sound like a real person thinking out loud: use contractions (don't, you're, it's), \
+short punchy fragments, imperfect casual rhythm — NOT polished proverb sentences
+- Open with a real, specific opinion — try starters like "Here's the thing —", \
+"Nobody tells you this, but —", "I used to think —", "Not gonna lie —", or just dive \
+straight into the point like you're mid-conversation
+- If a line sounds like it belongs on a motivational poster or in a textbook, rewrite \
+it rougher, blunter, more personal. Specific beats abstract every time.
+- It's fine to be direct or a little raw — this should read like real advice from an \
+older brother or mentor, not a wisdom card
+- Keep the faith and money themes, but ground them in something specific-sounding, \
+not generic wisdom
 
 Write ONE completely original Instagram post, different from anything written \
 before, covering ONE of these themes (pick a different one each time): money \
@@ -35,10 +46,10 @@ forgiveness, contentment, legacy, faith versus fear, protecting your peace, \
 small beginnings, guarding your reputation, simplicity, or rest.
 
 Return ONLY this exact JSON object, nothing else, no markdown fences:
-{"image_text": "3-6 short lines using \\n for line breaks, the core wisdom \
-statement, plain and punchy", "caption": "1-3 sentences expanding the idea, \
-ending with a genuine question to the reader", "hashtags": "5-6 relevant \
-hashtags separated by spaces, starting with #, always including #rootedandrich"}
+{"image_text": "3-6 short lines using \\n for line breaks, sounding like real talk, \
+not a polished quote", "caption": "1-3 sentences in the same direct voice, ending \
+with a genuine question to the reader", "hashtags": "5-6 relevant hashtags separated \
+by spaces, starting with #, always including #rootedandrich"}
 """
 
 
@@ -87,20 +98,20 @@ FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 STATE_FILE = "posts/state.json"
 
 CONTENT_BANK = [
-    {"image_text": "Money is not evil.\nThe love of money without wisdom is what ruins men.\n\nYou were not designed to worship\nwhat you were given the ability to earn.",
-     "caption": "Wisdom with money looks like saving before spending, giving before hoarding, and walking away from deals that promise too much too fast.\n\nWhat's one money habit you're building this year?",
+    {"image_text": "Nobody tells you this \u2014\nmoney's not the problem.\n\nYou worshipping what you earn?\nThat's the problem.",
+     "caption": "Save before you spend. Give before you hoard. Walk away from anything promising too much too fast \u2014 every time.\n\nWhat's one money habit you're actually building this year, not just talking about?",
      "hashtags": "#moneywisdom #stewardship #wealthmindset #purposeoverprofit #dailywisdom #rootedandrich"},
-    {"image_text": "Discipline is a form of worship.\n\nEvery rep you skip, every excuse you accept,\nevery day you waste \u2014 you're not just\nfailing yourself.\n\nYou're wasting a gift you didn't create.",
-     "caption": "Show up like the days were given to you on purpose. Because they were.\n\nWhat discipline are you rebuilding right now?",
+    {"image_text": "Here's the thing about discipline \u2014\nit's not about the gym.\n\nEvery excuse you let slide,\nevery day you waste,\nyou're not just failing you.\n\nYou're wasting something you didn't even make.",
+     "caption": "Show up like these days were handed to you on purpose. Because they were.\n\nWhat discipline are you actually rebuilding right now, not just posting about?",
      "hashtags": "#discipline #dailydiscipline #purposefulliving #stewardship #growthjourney #rootedandrich"},
-    {"image_text": "You cannot serve two masters \u2014\nfear and faith.\n\nFear says hoard everything, trust no one.\nFaith says work hard, plan wisely,\nand release what was never yours to grip.",
-     "caption": "Most men are financially anxious not because they lack money \u2014 but because they lack faith in the process they're building.\n\nWhich one runs your decisions more, fear or faith?",
+    {"image_text": "Not gonna lie \u2014\nfear and faith can't both run your life.\n\nFear says hoard it, trust nobody.\nFaith says work hard, plan smart,\nand let go of what was never really yours.",
+     "caption": "Most guys aren't broke because of money. They're broke because they don't trust the process they're actually building.\n\nWhich one's driving your decisions right now \u2014 fear or faith?",
      "hashtags": "#faithoverfear #trusttheprocess #moneymindset #spiritualgrowth #dailywisdom #rootedandrich"},
-    {"image_text": "If you want a better life,\nyou have to be willing to pay\nthe true cost of it.\n\nEarly mornings. Saying no to comfort.\nGiving even when it's tight.\nStudying instead of scrolling.",
-     "caption": "The version of you that you're praying to become is waiting on the other side of these boring decisions.\n\nWhich cost are you avoiding right now?",
+    {"image_text": "You want the better life?\nThen pay for it.\n\nNot with money \u2014\nwith early mornings,\nsaying no when yes is easier,\ngiving when it's tight,\nstudying when scrolling's easier.",
+     "caption": "The guy you're praying to become is on the other side of these boring decisions. That's it. That's the whole secret.\n\nWhich one are you dodging right now?",
      "hashtags": "#disciplinequotes #paythecost #growthmindset #stewardship #dailywisdom #rootedandrich"},
-    {"image_text": "Every paycheck is proof\nsomeone else already solved a problem\nyou haven't attempted yet.\n\nStop being frustrated by their success.\nStart becoming a student of it.",
-     "caption": "There's no shame in starting over \u2014 only in staying still out of pride.\n\nWho are you studying right now?",
+    {"image_text": "Every paycheck you see?\nThat's proof somebody solved a problem\nyou haven't even tried yet.\n\nStop being mad about their win.\nStart studying how they got it.",
+     "caption": "There's no shame in starting over. There's only shame in staying still because your pride won't let you begin.\n\nWho are you actually studying right now?",
      "hashtags": "#wealthmindset #levelup #financialwisdom #growthjourney #dailywisdom #rootedandrich"},
     {"image_text": "You were not designed to be ruled\nby impulses.\n\nEvery time you master a craving \u2014\nfood, spending, anger \u2014 you're practicing\ndominion over yourself.",
      "caption": "Self-control isn't restriction. It's the evidence that you belong to yourself again.\n\nWhat craving are you learning to master?",
@@ -226,6 +237,7 @@ def render_post(image_text, out_path):
 
     font_small = ImageFont.truetype(FONT_REG, 26)
     draw.text((left_margin, SIZE - 90), HANDLE, font=font_small, fill=MUTED)
+
     img.save(out_path, "PNG", quality=100)
 
 

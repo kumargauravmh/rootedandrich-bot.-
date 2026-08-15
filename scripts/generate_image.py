@@ -8,8 +8,7 @@ FALLBACK: if that call ever fails for any reason (no internet, rate limit,
 bad response), it safely falls back to the next item in CONTENT_BANK below,
 so a post always goes out either way.
 
-Renders both a 1080x1080 feed image AND a separate 1080x1920 Story image,
-so Stories display correctly instead of being cropped.
+Renders the result as a 1080x1080 black-background image for @rootedand.rich.
 Runs automatically inside GitHub Actions, three times a day.
 """
 
@@ -21,25 +20,31 @@ from PIL import Image, ImageDraw, ImageFont
 
 GEMINI_MODEL = "gemini-2.5-flash-lite"
 
-AI_PROMPT = """You write for @rootedand.rich — but you're not a quote generator. You're \
-a guy who's actually wrestled with faith, discipline, and money, and you're talking \
-straight to men aged 18-34 in India and the US who need to hear it like a real \
-conversation, not a greeting card.
+AI_PROMPT = """You're the content strategist for @rootedand.rich, and your job is to \
+pick angles that actually stop the scroll for men aged 18-34 in India and the US. \
+You're not a quote generator and you're not precious about sounding "nice" — you're a \
+guy who's actually lived through wrestling with faith, discipline, and money, and \
+you're talking straight, the way an older brother talks when he's not holding back.
 
 Voice rules — follow these closely:
 - Talk directly TO the reader using "you" — never "men" in the abstract third person
-- Sound like a real person thinking out loud: use contractions (don't, you're, it's), \
-short punchy fragments, imperfect casual rhythm — NOT polished proverb sentences
-- Open with a real scroll-stopping hook. Rotate between these patterns rather than \
-always using the same one: a bold flat claim ("I guarantee you—"), a label ("TRUTH:", \
-"FACT:", "REAL TALK:"), a direct address ("Stop doing this."), a myth-bust ("Nobody \
-tells you this, but—"), or just dropping straight into the point mid-thought
+- Go informal, not middle-ground-formal. Real texting rhythm: contractions, sentence \
+fragments, run-on thoughts when that's how a real person would actually say it
+- Open with a real scroll-stopping hook. Rotate between patterns: a bold flat claim \
+("I guarantee you—"), a label ("TRUTH:", "REAL TALK:"), a blunt direct order ("Stop \
+doing this."), a myth-bust ("Nobody tells you this, but—"), or dropping straight into \
+the point mid-thought
+- Be opinionated and blunt, not diplomatic. Take a clear side. It's fine if not \
+everyone agrees — safe, hedge-everything writing doesn't get shared
+- Casual profanity is fine when it lands naturally (shit, hell, damn, ass, and mild \
+uses of "f*ck" with the asterisk, the way real accounts in this space write it) — \
+don't force it into every post, but don't sanitize it out either when it's the \
+natural word
 - If a line sounds like it belongs on a motivational poster or in a textbook, rewrite \
 it rougher, blunter, more specific. Specific beats abstract every time.
-- It's fine to be direct or a little raw — this should read like real advice from an \
-older brother or mentor, not a wisdom card
 - Keep the faith and money themes, but ground them in something specific-sounding, \
-not generic wisdom
+not generic wisdom. Faith-related content should still respect the topic — raw and \
+irreverent in tone is fine, mocking faith itself is not.
 
 Write ONE completely original Instagram post, different from anything written \
 before, covering ONE of these themes (pick a different one each time): money \
@@ -97,6 +102,8 @@ FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 FONT_REG = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 
 STATE_FILE = "posts/state.json"
+
+VIRAL_HASHTAGS = "#motivation #mindset #wealth #faith #entrepreneur"
 
 CONTENT_BANK = [
     {"image_text": "Nobody tells you this \u2014\nmoney's not the problem.\n\nYou worshipping what you earn?\nThat's the problem.",
@@ -236,8 +243,6 @@ def render_post(image_text, out_path):
 
 
 def render_story(image_text, out_path):
-    """Renders a properly-shaped 9:16 portrait image for Stories, so nothing
-    gets cropped the way a stretched square image would be."""
     story_width = 1080
     story_height = 1920
     img = Image.new("RGB", (story_width, story_height), BLACK)
@@ -299,7 +304,7 @@ def main():
     render_post(post["image_text"], image_path)
     render_story(post["image_text"], story_path)
 
-    full_caption = f"{post['caption']}\n\n.\n.\n.\n{post['hashtags']}"
+    full_caption = f"{post['caption']}\n\n.\n.\n.\n{post['hashtags']} {VIRAL_HASHTAGS}"
     with open(caption_path, "w", encoding="utf-8") as f:
         f.write(full_caption)
 

@@ -8,7 +8,8 @@ FALLBACK: if that call ever fails for any reason (no internet, rate limit,
 bad response), it safely falls back to the next item in CONTENT_BANK below,
 so a post always goes out either way.
 
-Renders the result as a 1080x1080 black-background image for @rootedand.rich.
+Renders both a 1080x1080 feed image AND a separate 1080x1920 Story image,
+so Stories display correctly instead of being cropped.
 Runs automatically inside GitHub Actions, three times a day.
 """
 
@@ -224,8 +225,37 @@ def render_post(image_text, out_path):
     line_height = int(font_size * 1.55)
 
     lines = wrap_and_measure(draw, image_text, font, max_width)
-
     start_y = int(SIZE * 0.30)
+
+    y = start_y
+    for line in lines:
+        draw.text((left_margin, y), line, font=font, fill=WHITE)
+        y += line_height
+
+    img.save(out_path, "PNG", quality=100)
+
+
+def render_story(image_text, out_path):
+    """Renders a properly-shaped 9:16 portrait image for Stories, so nothing
+    gets cropped the way a stretched square image would be."""
+    story_width = 1080
+    story_height = 1920
+    img = Image.new("RGB", (story_width, story_height), BLACK)
+    draw = ImageDraw.Draw(img)
+
+    left_margin = 90
+    max_width = story_width - (left_margin * 2)
+    font_size = 46
+    font = ImageFont.truetype(FONT_REG, font_size)
+    line_height = int(font_size * 1.55)
+
+    lines = wrap_and_measure(draw, image_text, font, max_width)
+    total_h = len(lines) * line_height
+
+    safe_top = int(story_height * 0.25)
+    safe_bottom = int(story_height * 0.80)
+    safe_height = safe_bottom - safe_top
+    start_y = safe_top + max(0, (safe_height - total_h) // 2)
 
     y = start_y
     for line in lines:
@@ -263,9 +293,11 @@ def main():
     slug = now.strftime("%Y-%m-%d_%H%M%S")
 
     image_path = f"posts/post_{slug}.png"
+    story_path = f"posts/story_{slug}.png"
     caption_path = f"posts/caption_{slug}.txt"
 
     render_post(post["image_text"], image_path)
+    render_story(post["image_text"], story_path)
 
     full_caption = f"{post['caption']}\n\n.\n.\n.\n{post['hashtags']}"
     with open(caption_path, "w", encoding="utf-8") as f:
@@ -274,7 +306,7 @@ def main():
     with open("posts/latest.txt", "w") as f:
         f.write(slug)
 
-    print(f"Generated {image_path}")
+    print(f"Generated {image_path} and {story_path}")
 
 
 if __name__ == "__main__":

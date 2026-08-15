@@ -31,6 +31,11 @@ def build_image_url(slug):
     return f"https://raw.githubusercontent.com/{repo}/main/posts/post_{slug}.png"
 
 
+def build_story_image_url(slug):
+    repo = os.environ["GITHUB_REPOSITORY"]
+    return f"https://raw.githubusercontent.com/{repo}/main/posts/story_{slug}.png"
+
+
 def read_caption(slug):
     with open(f"posts/caption_{slug}.txt", "r", encoding="utf-8") as f:
         return f.read().strip()
@@ -104,19 +109,13 @@ def main():
     result = publish_container(ig_user_id, token, container_id)
     print(f"Published to feed: {result}")
 
-    # Also share the same image to Stories automatically. If this fails for
-    # any reason, it should NOT count as an overall failure - the feed post
-    # already succeeded, and that's the important one.
-    try:
-        story_container_id = create_media_container(
-            ig_user_id, token, image_url, caption=None, media_type="STORIES"
-        )
-        print(f"Story container created: {story_container_id}")
-        wait_until_ready(story_container_id, token)
-        story_result = publish_container(ig_user_id, token, story_container_id)
-        print(f"Published to story: {story_result}")
-    except Exception as e:
-        print(f"Story publish failed (feed post still succeeded): {e}")
+    # NOTE: Automatic Story posting has been turned off. Instagram's native
+    # "Share to Story" look (rounded card, music, attribution) can only be
+    # produced by a human tapping Share on a real post - the API can only
+    # upload a plain full-screen image, which doesn't match that look.
+    # If you want a post on your Story, the fastest way is to open the
+    # feed post after it goes live and tap Share > Add to Story yourself -
+    # two taps, and it gets Instagram's real polished treatment.
 
 
 if __name__ == "__main__":

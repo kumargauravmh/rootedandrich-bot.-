@@ -1,0 +1,46 @@
+name: Rooted and Rich - 3x Daily Post
+
+on:
+  schedule:
+    # All times in UTC. IST = UTC + 5:30
+    - cron: '30 2 * * *'    # 8:00 AM IST — morning post
+    - cron: '30 9 * * *'    # 3:00 PM IST — afternoon post
+    - cron: '30 14 * * *'   # 8:00 PM IST — evening post
+  workflow_dispatch: {}      # lets you trigger it manually from the Actions tab to test
+
+permissions:
+  contents: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install pillow requests
+
+      - name: Generate this run's image + caption
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/generate_image.py
+
+      - name: Commit and push generated post
+        run: |
+          git config user.name "rootedandrich-bot"
+          git config user.email "rootedandrich-bot@users.noreply.github.com"
+          git add posts/
+          git commit -m "Post $(cat posts/latest.txt)" || echo "Nothing to commit"
+          git push
+
+      - name: Publish to Instagram
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: python scripts/post_to_instagram.py

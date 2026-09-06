@@ -18,7 +18,7 @@ import requests
 from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
 
-GEMINI_MODEL = "gemini-2.5-flash-lite"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 AI_PROMPT = """You're the content strategist for @rootedand.rich, and your job is to \
 pick angles that actually stop the scroll for men aged 18-34 in India and the US. \

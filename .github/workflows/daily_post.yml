@@ -23,13 +23,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: pip install pillow requests
+      - name: Ensure ffmpeg
+        run: ffmpeg -version || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
-      - name: Generate this run's image + caption
+      - name: Install dependencies
+        run: pip install pillow requests edge-tts
+
+      - name: Generate this run's reel + caption
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python scripts/generate_image.py
+        run: python scripts/generate_reel.py
 
       - name: Commit and push generated post
         run: |
@@ -39,9 +42,10 @@ jobs:
           git commit -m "Post $(cat posts/latest.txt)" || echo "Nothing to commit"
           git push
 
-      - name: Publish to Instagram
+      - name: Publish reel to Instagram
         env:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
-        run: python scripts/post_to_instagram.py
-
+          MEDIA_REPO: ${{ secrets.MEDIA_REPO }}
+          MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
+        run: python scripts/post_reel.py

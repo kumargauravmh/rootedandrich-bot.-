@@ -61,10 +61,7 @@ Voice rules — follow these closely:
 - Talk directly TO the reader using "you" — never "men" in the abstract third person
 - Go informal, not middle-ground-formal. Real texting rhythm: contractions, sentence \
 fragments, run-on thoughts when that's how a real person would actually say it
-- Open with a real scroll-stopping hook. Rotate between patterns: a bold flat claim \
-("I guarantee you—"), a label ("TRUTH:", "REAL TALK:"), a blunt direct order ("Stop \
-doing this."), a myth-bust ("Nobody tells you this, but—"), or dropping straight into \
-the point mid-thought
+- {hook_instruction}
 - Be opinionated and blunt, not diplomatic. Take a clear side. It's fine if not \
 everyone agrees — safe, hedge-everything writing doesn't get shared
 - Casual profanity is fine when it lands naturally (shit, hell, damn, ass, and mild \
@@ -83,6 +80,9 @@ stewardship, discipline, integrity, patience, gratitude, generosity, \
 forgiveness, contentment, legacy, faith versus fear, protecting your peace, \
 small beginnings, guarding your reputation, simplicity, or rest.
 
+Structure this post using this EXACT format — this is mandatory, not optional: \
+{format_instruction}
+
 {trends_block}
 
 Return ONLY this exact JSON object, nothing else, no markdown fences:
@@ -99,6 +99,15 @@ def generate_via_ai():
         print("No GEMINI_API_KEY set — skipping AI generation, using content bank.")
         return None
 
+    state = load_state()
+    hook_index = (state.get("last_hook_index", -1) + 1) % len(HOOK_TYPES)
+    hook_instruction = (
+        f"Open with this EXACT hook style and nothing else — this is mandatory, "
+        f"not a suggestion: {HOOK_TYPES[hook_index]}"
+    )
+    format_index = (state.get("last_format_index", -1) + 1) % len(FORMAT_TYPES)
+    format_instruction = FORMAT_TYPES[format_index]
+
     trends = get_trending_topics()
     if trends:
         trend_list = ", ".join(trends)
@@ -114,7 +123,11 @@ def generate_via_ai():
     else:
         trends_block = ""
 
-    prompt = AI_PROMPT.format(trends_block=trends_block)
+    prompt = AI_PROMPT.format(
+        trends_block=trends_block,
+        hook_instruction=hook_instruction,
+        format_instruction=format_instruction,
+    )
 
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
            f"{GEMINI_MODEL}:generateContent?key={api_key}")
@@ -149,7 +162,8 @@ def generate_via_ai():
             print(f"AI response missing required fields — falling back to content bank. Raw: {raw_text}")
             return None
 
-        print("Generated fresh content via Gemini AI.")
+        print(f"Generated fresh content via Gemini AI. Hook: {HOOK_TYPES[hook_index]} | Format: {FORMAT_TYPES[format_index]}")
+        save_state({"last_hook_index": hook_index, "last_format_index": format_index})
         return post
 
     except Exception as e:
@@ -335,14 +349,42 @@ def render_story(image_text, out_path):
     img.save(out_path, "PNG", quality=100)
 
 
+HOOK_TYPES = [
+    "a bold flat claim stated like a fact (e.g. 'I guarantee you—')",
+    "a single-word or short label callout in caps (e.g. 'TRUTH:' or 'FACT:')",
+    "a blunt direct order or command, NOT starting with the word 'Stop' — use a different verb "
+    "(e.g. 'Cut the—', 'Kill the—', 'Burn the—', 'Drop the—')",
+    "a myth-bust opener (e.g. 'Nobody tells you this, but—')",
+    "dropping straight into the middle of a thought with no setup at all, no label, no command",
+]
+
+FORMAT_TYPES = [
+    "a numbered listicle (e.g. '5 things that separate men who make it from men who "
+    "don't:') followed by 4-6 short numbered items, ending with ONE standalone punchline "
+    "sentence after the list that ties it together",
+    "parallel repetition structure: the same short sentence shape repeated 3-4 times back "
+    "to back (e.g. 'Be rich. But never talk about money. Be sharp. But never announce it.'), "
+    "ending on a single short standalone line that breaks the pattern",
+    "a short punchy multi-line statement, 3-5 lines, building to one hard final line that "
+    "recontextualizes everything before it",
+    "a single dense paragraph (3-4 sentences, no line breaks) that reads like a real "
+    "thought someone typed out fast, ending on one short standalone sentence",
+]
+
+
 def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, "r") as f:
             return json.load(f)
-    return {"last_index": -1}
+    return {"last_index": -1, "last_hook_index": -1}
 
 
-def save_state(state):
+def save_state(updates: dict):
+    """Merges into the existing state file instead of overwriting it, so the
+    content-bank fallback index and the hook-rotation index don't clobber
+    each other when only one of them changes in a given run."""
+    state = load_state()
+    state.update(updates)
     with open(STATE_FILE, "w") as f:
         json.dump(state, f)
 

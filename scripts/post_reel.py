@@ -47,19 +47,25 @@ def push_to_media_repo(local_video_path: str, filename: str) -> str:
     token = os.environ["MEDIA_REPO_TOKEN"]
     clone_dir = "media_repo_tmp"
 
+    def run_git(args, **kwargs):
+        result = subprocess.run(args, capture_output=True, text=True, **kwargs)
+        if result.returncode != 0:
+            # Redact the token before printing, then show the real git error
+            safe_args = [a.replace(token, "***TOKEN***") for a in args]
+            print(f"Command failed: {safe_args}")
+            print(f"stdout: {result.stdout}")
+            print(f"stderr: {result.stderr}")
+            raise RuntimeError(f"git command failed with exit code {result.returncode}")
+        return result
+
+    print(f"Cloning into media repo: {media_repo}")
     subprocess.run(["rm", "-rf", clone_dir], check=True)
-    subprocess.run(
-        ["git", "clone", f"https://x-access-token:{token}@github.com/{media_repo}.git", clone_dir],
-        check=True, capture_output=True,
-    )
+    run_git(["git", "clone", f"https://x-access-token:{token}@github.com/{media_repo}.git", clone_dir])
     subprocess.run(["cp", local_video_path, os.path.join(clone_dir, filename)], check=True)
-    subprocess.run(["git", "-C", clone_dir, "add", filename], check=True)
-    subprocess.run(
-        ["git", "-C", clone_dir, "-c", "user.email=rootedandrich-bot@users.noreply.github.com",
-         "-c", "user.name=rootedandrich-bot", "commit", "-m", f"add {filename}"],
-        check=True, capture_output=True,
-    )
-    subprocess.run(["git", "-C", clone_dir, "push"], check=True, capture_output=True)
+    run_git(["git", "-C", clone_dir, "add", filename])
+    run_git(["git", "-C", clone_dir, "-c", "user.email=rootedandrich-bot@users.noreply.github.com",
+             "-c", "user.name=rootedandrich-bot", "commit", "-m", f"add {filename}"])
+    run_git(["git", "-C", clone_dir, "push"])
 
     branch = subprocess.run(
         ["git", "-C", clone_dir, "rev-parse", "--abbrev-ref", "HEAD"],

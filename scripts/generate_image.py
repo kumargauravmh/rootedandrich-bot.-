@@ -15,10 +15,41 @@ Runs automatically inside GitHub Actions, three times a day.
 import os
 import json
 import requests
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from PIL import Image, ImageDraw, ImageFont
 
 GEMINI_MODEL = "gemini-3.1-flash-lite"
+
+# Google's default safety filters can silently block requests that ask for
+# mild profanity, even when it's a clear, intentional style choice like this
+# account's voice. This relaxes those categories so real generations don't
+# get blocked and silently fall back to the static content bank.
+SAFETY_SETTINGS = [
+    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_ONLY_HIGH"},
+    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_ONLY_HIGH"},
+    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+]
+
+
+def get_trending_topics(max_topics=5):
+    """
+    Pulls today's real trending search terms so Gemini has something current
+    to (optionally) ground a post in, instead of only evergreen wisdom.
+    Returns a plain list of strings, or [] if the fetch fails for any reason
+    — never lets a trends outage break post generation.
+    """
+    try:
+        resp = requests.get("https://trends.google.com/trending/rss?geo=US", timeout=10)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
+        titles = [item.findtext("title") for item in root.iter("item")]
+        titles = [t for t in titles if t][:max_topics]
+        return titles
+    except Exception as e:
+        print(f"Trending topics fetch failed ({e}) — continuing without them.")
+        return []
 
 AI_PROMPT = """You're the content strategist for @rootedand.rich, and your job is to \
 pick angles that actually stop the scroll for men aged 18-34 in India and the US. \
@@ -52,11 +83,13 @@ stewardship, discipline, integrity, patience, gratitude, generosity, \
 forgiveness, contentment, legacy, faith versus fear, protecting your peace, \
 small beginnings, guarding your reputation, simplicity, or rest.
 
+{trends_block}
+
 Return ONLY this exact JSON object, nothing else, no markdown fences:
-{"image_text": "3-6 short lines using \\n for line breaks, sounding like real talk, \
+{{"image_text": "3-6 short lines using \\n for line breaks, sounding like real talk, \
 not a polished quote", "caption": "1-3 sentences in the same direct voice, ending \
 with a genuine question to the reader", "hashtags": "5-6 relevant hashtags separated \
-by spaces, starting with #, always including #rootedandrich"}
+by spaces, starting with #, always including #rootedandrich"}}
 """
 
 
@@ -66,22 +99,54 @@ def generate_via_ai():
         print("No GEMINI_API_KEY set — skipping AI generation, using content bank.")
         return None
 
+    trends = get_trending_topics()
+    if trends:
+        trend_list = ", ".join(trends)
+        trends_block = (
+            f"Here's what's actually trending in the news/culture right now: "
+            f"{trend_list}. ONLY use one of these as a hook or reference if it "
+            f"genuinely, naturally connects to money/discipline/faith without "
+            f"forcing it or sounding like a tacked-on news reference. If none of "
+            f"them fit naturally, ignore this list completely and write from the "
+            f"themes above instead — a forced trend tie-in is worse than none."
+        )
+        print(f"Grounding with today's trends: {trend_list}")
+    else:
+        trends_block = ""
+
+    prompt = AI_PROMPT.format(trends_block=trends_block)
+
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
            f"{GEMINI_MODEL}:generateContent?key={api_key}")
     body = {
-        "contents": [{"parts": [{"text": AI_PROMPT}]}],
+        "contents": [{"parts": [{"text": prompt}]}],
         "generationConfig": {"responseMimeType": "application/json", "temperature": 0.95},
+        "safetySettings": SAFETY_SETTINGS,
     }
 
     try:
         resp = requests.post(url, json=body, timeout=30)
         resp.raise_for_status()
-        raw_text = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        response_json = resp.json()
+
+        candidates = response_json.get("candidates", [])
+        if not candidates:
+            # This is the safety-block case: Gemini returns 200 OK with no
+            # candidates and a promptFeedback.blockReason instead of an error.
+            print(f"No candidates returned — likely safety-blocked. Full response: {response_json}")
+            return None
+
+        finish_reason = candidates[0].get("finishReason")
+        if finish_reason not in (None, "STOP"):
+            print(f"Generation stopped early (finishReason={finish_reason}). Full response: {response_json}")
+            return None
+
+        raw_text = candidates[0]["content"]["parts"][0]["text"]
         post = json.loads(raw_text)
 
         required = ["image_text", "caption", "hashtags"]
         if not all(k in post and post[k].strip() for k in required):
-            print("AI response missing required fields — falling back to content bank.")
+            print(f"AI response missing required fields — falling back to content bank. Raw: {raw_text}")
             return None
 
         print("Generated fresh content via Gemini AI.")

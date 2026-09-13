@@ -1,0 +1,45 @@
+# This is NOT a full replacement file — it's the diff to apply to your
+# existing daily_post.yml (job name: post). Merge these into what you have.
+
+# 1) Add these to requirements.txt (or install inline):
+#    edge-tts
+#    pillow
+#    requests
+#
+# 2) Add these repo secrets (Settings > Secrets and variables > Actions):
+#    MEDIA_REPO         -> e.g. "kumargauravmh/rootedandrich-media" (create this, keep it PUBLIC)
+#    MEDIA_REPO_TOKEN   -> a fine-grained PAT with contents:write on that one repo only
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ffmpeg ships preinstalled on ubuntu-latest runners; this is just a safety net
+      - name: Ensure ffmpeg
+        run: ffmpeg -version || sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      # --- Your existing Gemini call stays the same, it just now feeds
+      # --- generate_reel.py instead of your old PIL image script ---
+      - name: Generate content text (Gemini)
+        id: gen_text
+        run: python scripts/generate_content.py   # your existing step, unchanged
+
+      - name: Build reel video
+        run: python scripts/generate_reel.py
+
+      - name: Post reel to Instagram
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IG_BUSINESS_ID: ${{ secrets.IG_BUSINESS_ID }}
+          MEDIA_REPO: ${{ secrets.MEDIA_REPO }}
+          MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
+        run: python scripts/post_reel.py output_reel.mp4 "${{ steps.gen_text.outputs.caption }}"

@@ -77,8 +77,7 @@ async def generate_voiceover(text: str, out_path: str) -> float:
     return float(json.loads(result.stdout)["format"]["duration"])
 
 
-def render_frames(image_text: str, frames_dir: Path, total_frames: int):
-    frames_dir.mkdir(parents=True, exist_ok=True)
+def render_cover_image(image_text: str, out_path: str):
     font = ImageFont.truetype(FONT_REG, FONT_SIZE)
     max_width = WIDTH - (2 * LEFT_MARGIN)
 
@@ -90,30 +89,27 @@ def render_frames(image_text: str, frames_dir: Path, total_frames: int):
             wrapped_lines.extend(wrap_text(para, font, max_width))
 
     n_lines = len(wrapped_lines)
-    reveal_points = [int((i / max(n_lines, 1)) * total_frames) for i in range(n_lines)]
     line_height = FONT_SIZE + LINE_SPACING
     block_height = n_lines * line_height
     start_y = (HEIGHT - block_height) // 2
 
-    for f in range(total_frames):
-        img = Image.new("RGB", (WIDTH, HEIGHT), BLACK)
-        draw = ImageDraw.Draw(img)
-        for i, line in enumerate(wrapped_lines):
-            if line and f >= reveal_points[i]:
-                y = start_y + i * line_height
-                draw.text((LEFT_MARGIN, y), line, font=font, fill=WHITE)
-        img.save(frames_dir / f"frame_{f:05d}.png")
+    img = Image.new("RGB", (WIDTH, HEIGHT), BLACK)
+    draw = ImageDraw.Draw(img)
+    for i, line in enumerate(wrapped_lines):
+        if line:
+            y = start_y + i * line_height
+            draw.text((LEFT_MARGIN, y), line, font=font, fill=WHITE)
+    img.save(out_path)
 
 
-def assemble_video(frames_dir: Path, audio_path: str, out_path: str, fps: int):
+def assemble_video(cover_image_path: str, audio_path: str, out_path: str, duration: float):
     cmd = [
         "ffmpeg", "-y",
-        "-framerate", str(fps),
-        "-i", str(frames_dir / "frame_%05d.png"),
+        "-loop", "1", "-i", cover_image_path,
         "-i", audio_path,
-        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+        "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
         "-c:a", "aac", "-b:a", "128k",
-        "-shortest",
+        "-t", str(duration),
         out_path,
     ]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -123,13 +119,14 @@ def build_reel(image_text: str, out_path: str, work_dir: str = "reel_build"):
     work = Path(work_dir)
     work.mkdir(exist_ok=True)
     audio_path = str(work / "voiceover.mp3")
-    frames_dir = work / "frames"
+    cover_path = str(work / "cover.png")
 
     duration = asyncio.run(generate_voiceover(image_text, audio_path))
-    total_frames = max(int(duration * FPS), FPS)
+    # small pad so the last word isn't cut off right at the audio's edge
+    duration += 0.5
 
-    render_frames(image_text, frames_dir, total_frames)
-    assemble_video(frames_dir, audio_path, out_path, FPS)
+    render_cover_image(image_text, cover_path)
+    assemble_video(cover_path, audio_path, out_path, duration)
     return duration
 
 

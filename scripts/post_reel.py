@@ -47,25 +47,19 @@ def push_to_media_repo(local_video_path: str, filename: str) -> str:
     token = os.environ["MEDIA_REPO_TOKEN"]
     clone_dir = "media_repo_tmp"
 
-    def run_git(args, **kwargs):
-        result = subprocess.run(args, capture_output=True, text=True, **kwargs)
-        if result.returncode != 0:
-            # Redact the token before printing, then show the real git error
-            safe_args = [a.replace(token, "***TOKEN***") for a in args]
-            print(f"Command failed: {safe_args}")
-            print(f"stdout: {result.stdout}")
-            print(f"stderr: {result.stderr}")
-            raise RuntimeError(f"git command failed with exit code {result.returncode}")
-        return result
-
-    print(f"Cloning into media repo: {media_repo}")
     subprocess.run(["rm", "-rf", clone_dir], check=True)
-    run_git(["git", "clone", f"https://x-access-token:{token}@github.com/{media_repo}.git", clone_dir])
+    subprocess.run(
+        ["git", "clone", f"https://x-access-token:{token}@github.com/{media_repo}.git", clone_dir],
+        check=True, capture_output=True,
+    )
     subprocess.run(["cp", local_video_path, os.path.join(clone_dir, filename)], check=True)
-    run_git(["git", "-C", clone_dir, "add", filename])
-    run_git(["git", "-C", clone_dir, "-c", "user.email=rootedandrich-bot@users.noreply.github.com",
-             "-c", "user.name=rootedandrich-bot", "commit", "-m", f"add {filename}"])
-    run_git(["git", "-C", clone_dir, "push"])
+    subprocess.run(["git", "-C", clone_dir, "add", filename], check=True)
+    subprocess.run(
+        ["git", "-C", clone_dir, "-c", "user.email=rootedandrich-bot@users.noreply.github.com",
+         "-c", "user.name=rootedandrich-bot", "commit", "-m", f"add {filename}"],
+        check=True, capture_output=True,
+    )
+    subprocess.run(["git", "-C", clone_dir, "push"], check=True, capture_output=True)
 
     branch = subprocess.run(
         ["git", "-C", clone_dir, "rev-parse", "--abbrev-ref", "HEAD"],
@@ -75,10 +69,10 @@ def push_to_media_repo(local_video_path: str, filename: str) -> str:
     return f"https://raw.githubusercontent.com/{media_repo}/{branch}/{filename}"
 
 
-def create_media_container(ig_user_id, token, video_url, caption):
+def create_media_container(ig_user_id, token, video_url, caption=None, media_type="REELS"):
     url = f"{GRAPH_HOST}/{GRAPH_VERSION}/{ig_user_id}/media"
     data = {
-        "media_type": "REELS",
+        "media_type": media_type,
         "video_url": video_url,
         "access_token": token,
     }
@@ -132,14 +126,28 @@ def main():
     video_url = push_to_media_repo(local_video_path, media_filename)
     print(f"Video hosted at: {video_url}")
 
-    container_id = create_media_container(ig_user_id, token, video_url, caption)
-    print(f"Container created: {container_id}")
+    # --- Publish the Reel to the feed (unchanged, this is what matters most) ---
+    container_id = create_media_container(ig_user_id, token, video_url, caption, media_type="REELS")
+    print(f"Reel container created: {container_id}")
 
     wait_until_ready(container_id, token)
-    print("Container ready, publishing...")
+    print("Reel container ready, publishing...")
 
     result = publish_container(ig_user_id, token, container_id)
     print(f"Published reel: {result}")
+
+    # --- Also share the same video to Stories ---
+    # Wrapped in try/except deliberately: a Stories hiccup should never mark
+    # the whole run as failed when the Reel itself already published fine.
+    try:
+        story_container_id = create_media_container(ig_user_id, token, video_url, media_type="STORIES")
+        print(f"Story container created: {story_container_id}")
+        wait_until_ready(story_container_id, token)
+        story_result = publish_container(ig_user_id, token, story_container_id)
+        print(f"Published to story: {story_result}")
+    except Exception as e:
+        print(f"Story publish failed (reel already published successfully, so not treating this as a "
+              f"run failure): {e}")
 
 
 if __name__ == "__main__":

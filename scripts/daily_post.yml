@@ -1,0 +1,54 @@
+name: Rooted and Rich - 3x Daily Post
+
+on:
+  schedule:
+    # All times in UTC. IST = UTC + 5:30
+    - cron: '30 2 * * *'    # 8:00 AM IST — morning post
+    - cron: '30 9 * * *'    # 3:00 PM IST — afternoon post
+    - cron: '30 14 * * *'   # 8:00 PM IST — evening post
+  workflow_dispatch: {}      # lets you trigger it manually from the Actions tab to test
+
+permissions:
+  contents: write
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Ensure ffmpeg
+        run: ffmpeg -version || (sudo apt-get update && sudo apt-get install -y ffmpeg)
+
+      - name: Install dependencies
+        run: pip install pillow requests edge-tts
+
+      - name: Generate this run's reel + caption
+        id: generate
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python scripts/generate_reel.py
+
+      - name: Commit and push generated post
+        if: steps.generate.outputs.generated == 'true'
+        run: |
+          git config user.name "rootedandrich-bot"
+          git config user.email "rootedandrich-bot@users.noreply.github.com"
+          git add posts/
+          git commit -m "Post $(cat posts/latest.txt)" || echo "Nothing to commit"
+          git push
+
+      - name: Publish reel to Instagram
+        if: steps.generate.outputs.generated == 'true'
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          MEDIA_REPO: ${{ secrets.MEDIA_REPO }}
+          MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
+        run: python scripts/post_reel.py

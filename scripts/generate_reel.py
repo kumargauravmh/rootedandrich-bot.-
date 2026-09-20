@@ -21,13 +21,12 @@ import edge_tts
 from PIL import Image, ImageDraw, ImageFont
 
 # Reuse everything from your existing pipeline — same Gemini prompt, same
-# content bank fallback, same state file, so this can't drift out of sync
-# with generate_image.py.
+# state file, so this can't drift out of sync with generate_image.py. No
+# content-bank fallback anymore: a failed Gemini call means no post today,
+# not a recycled one.
 from generate_image import (
     generate_via_ai,
-    load_state,
-    save_state,
-    CONTENT_BANK,
+    signal_github_output,
     FONT_REG,
     VIRAL_HASHTAGS,
 )
@@ -136,11 +135,10 @@ def main():
     post = generate_via_ai()
 
     if post is None:
-        state = load_state()
-        next_index = (state["last_index"] + 1) % len(CONTENT_BANK)
-        post = CONTENT_BANK[next_index]
-        save_state({"last_index": next_index})
-        print(f"Using content bank fallback (index {next_index} of {len(CONTENT_BANK)})")
+        print("Gemini generation failed — skipping this run entirely. "
+              "No fallback content, no repost. Next scheduled run will try again.")
+        signal_github_output(generated=False)
+        return
 
     now = datetime.now(timezone.utc)
     slug = now.strftime("%Y-%m-%d_%H%M%S")
@@ -158,6 +156,7 @@ def main():
     with open("posts/latest.txt", "w") as f:
         f.write(slug)
 
+    signal_github_output(generated=True)
     print(f"Generated {video_path}")
 
 

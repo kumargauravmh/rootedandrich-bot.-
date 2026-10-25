@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+reel_build/
+review_issue.md
+review_title.txt

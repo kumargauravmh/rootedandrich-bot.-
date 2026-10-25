@@ -16,9 +16,10 @@ on:
 permissions:
   contents: write
 
-# Never let two runs overlap (a manual run during a scheduled one, etc.)
+# Never let two runs overlap (a manual run during a scheduled one, etc.).
+# Shares a lane with the research workflow so their git pushes never collide.
 concurrency:
-  group: post
+  group: repo-writes
   cancel-in-progress: false
 
 jobs:

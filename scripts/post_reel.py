@@ -151,19 +151,7 @@ def main():
 
     result = publish_container(ig_user_id, token, container_id)
     print(f"Published reel: {result}")
-
-    # --- Also share the same video to Stories ---
-    # Wrapped in try/except deliberately: a Stories hiccup should never mark
-    # the whole run as failed when the Reel itself already published fine.
-    try:
-        story_container_id = create_media_container(ig_user_id, token, video_url, media_type="STORIES")
-        print(f"Story container created: {story_container_id}")
-        wait_until_ready(story_container_id, token)
-        story_result = publish_container(ig_user_id, token, story_container_id)
-        print(f"Published to story: {story_result}")
-    except Exception as e:
-        print(f"Story publish failed (reel already published successfully, so not treating this as a "
-              f"run failure): {e}")
+    # Stories are shared manually from the app (so the audio can be picked by hand).
 
 
 if __name__ == "__main__":

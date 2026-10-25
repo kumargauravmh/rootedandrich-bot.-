@@ -1,15 +1,25 @@
-name: Rooted and Rich - 3x Daily Post
+name: Rooted and Rich - Weekly Carousel Reel
 
 on:
   schedule:
-    # All times in UTC. IST = UTC + 5:30
-    - cron: '30 2 * * *'    # 8:00 AM IST — morning post
-    - cron: '30 9 * * *'    # 3:00 PM IST — afternoon post
-    - cron: '30 14 * * *'   # 8:00 PM IST — evening post
-  workflow_dispatch: {}      # lets you trigger it manually from the Actions tab to test
+    # All times UTC. IST = UTC + 5:30. Days: 0=Sun 2=Tue 4=Thu
+    - cron: '30 14 * * 2'   # Tuesday  8:00 PM IST
+    - cron: '30 14 * * 4'   # Thursday 8:00 PM IST
+    - cron: '30 14 * * 0'   # Sunday   8:00 PM IST
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true = build the reel and attach it to this run, do NOT post to Instagram'
+        default: 'true'
+        required: true
 
 permissions:
   contents: write
+
+# Never let two runs overlap (a manual run during a scheduled one, etc.)
+concurrency:
+  group: post
+  cancel-in-progress: false
 
 jobs:
   post:
@@ -27,14 +37,28 @@ jobs:
         run: ffmpeg -version || (sudo apt-get update && sudo apt-get install -y ffmpeg)
 
       - name: Install dependencies
-        run: pip install pillow requests edge-tts
+        run: pip install pillow requests
 
-      - name: Generate this run's reel + caption
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python scripts/generate_reel.py
+      # Takes the next unpublished item from content/queue/. If the queue is
+      # empty this step FAILS on purpose (you get a GitHub email) instead of
+      # posting something old.
+      - name: Build reel + caption from the content queue
+        id: build
+        run: python scripts/carousel_reel.py
+
+      # Dry run: attach the video so you can watch it before trusting the pipeline
+      - name: Attach reel (dry run only)
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-run-reel
+          path: |
+            posts/reel_*.mp4
+            posts/caption_*.txt
+          retention-days: 7
 
       - name: Commit and push generated post
+        if: ${{ steps.build.outputs.generated == 'true' && github.event.inputs.dry_run != 'true' }}
         run: |
           git config user.name "rootedandrich-bot"
           git config user.email "rootedandrich-bot@users.noreply.github.com"
@@ -43,9 +67,22 @@ jobs:
           git push
 
       - name: Publish reel to Instagram
+        if: ${{ steps.build.outputs.generated == 'true' && github.event.inputs.dry_run != 'true' }}
         env:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           MEDIA_REPO: ${{ secrets.MEDIA_REPO }}
           MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
         run: python scripts/post_reel.py
+
+      # Only after a successful publish: mark the queue item as used so it
+      # is never posted twice.
+      - name: Mark queue item as published
+        if: ${{ steps.build.outputs.generated == 'true' && github.event.inputs.dry_run != 'true' }}
+        run: |
+          python scripts/carousel_reel.py --mark-published
+          git config user.name "rootedandrich-bot"
+          git config user.email "rootedandrich-bot@users.noreply.github.com"
+          git add content/state.json
+          git commit -m "Mark $(cat posts/latest_item.txt) as published" || echo "Nothing to commit"
+          git push

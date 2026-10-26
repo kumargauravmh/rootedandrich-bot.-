@@ -59,6 +59,34 @@ def check_token():
         print("::warning title=IG_USER_ID mismatch::The token belongs to a different account "
               "than the IG_USER_ID secret.")
 
+    check_media_repo_token()
+
+
+def check_media_repo_token():
+    """The video is hosted in a public repo through a fine-grained GitHub token,
+    which has its own expiry date. Verify it can still write to that repo."""
+    media_repo = os.environ.get("MEDIA_REPO", "").strip()
+    token = os.environ.get("MEDIA_REPO_TOKEN", "").strip()
+    if not media_repo or not token:
+        print("::error title=Media repo secrets missing::MEDIA_REPO or MEDIA_REPO_TOKEN is not set.")
+        sys.exit(1)
+    resp = requests.get(f"https://api.github.com/repos/{media_repo}",
+                        headers={"Authorization": f"Bearer {token}",
+                                 "Accept": "application/vnd.github+json"}, timeout=30)
+    if resp.status_code in (401, 403, 404):
+        print(f"::error title=Media repo token rejected::GitHub answered {resp.status_code} for "
+              f"{media_repo}. The MEDIA_REPO_TOKEN has probably expired or lost access. FIX: "
+              f"GitHub > Settings > Developer settings > Fine-grained tokens > regenerate it "
+              f"(Contents: read and write, only on {media_repo}) and update the MEDIA_REPO_TOKEN "
+              f"secret.")
+        sys.exit(1)
+    resp.raise_for_status()
+    if not (resp.json().get("permissions") or {}).get("push"):
+        print(f"::error title=Media repo token is read-only::The token can see {media_repo} but "
+              f"cannot write to it. Give it Contents: read and write.")
+        sys.exit(1)
+    print(f"Media repo token OK: can push to {media_repo}.")
+
 
 def get_slug():
     with open("posts/latest.txt", "r") as f:

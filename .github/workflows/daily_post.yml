@@ -1,4 +1,4 @@
-name: Rooted and Rich - Weekly Carousel Reel
+name: Rooted and Rich - Weekly Carousel Post
 
 on:
   schedule:
@@ -15,6 +15,10 @@ on:
 
 permissions:
   contents: write
+
+env:
+  # carousel = swipeable picture post (default). reel = silent video of the same slides.
+  POST_FORMAT: carousel
 
 # Never let two runs overlap (a manual run during a scheduled one, etc.).
 # Shares a lane with the research workflow so their git pushes never collide.
@@ -43,29 +47,35 @@ jobs:
       # Takes the next unpublished item from content/queue/. If the queue is
       # empty this step FAILS on purpose (you get a GitHub email) instead of
       # posting something old.
-      - name: Build reel + caption from the content queue
+      - name: Build slides + caption from the content queue
         id: build
         run: python scripts/carousel_reel.py
 
-      # Dry run: attach ONLY the reel that was just built (not the 100+ old ones in posts/)
-      - name: Collect this run's reel (dry run only)
+      # Dry run: attach ONLY what this run just built (slides or video + caption)
+      - name: Collect this run's post (dry run only)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
           mkdir dryrun_out
           SLUG=$(cat posts/latest.txt)
-          cp posts/reel_$SLUG.mp4 posts/caption_$SLUG.txt dryrun_out/
+          if [ "$(cat posts/latest_format.txt)" = "carousel" ]; then
+            cp posts/carousel_$SLUG/slide_*.jpg dryrun_out/
+          else
+            cp posts/reel_$SLUG.mp4 dryrun_out/
+          fi
+          cp posts/caption_$SLUG.txt dryrun_out/
           ls -la dryrun_out
+          echo "### Format: $(cat posts/latest_format.txt)" >> $GITHUB_STEP_SUMMARY
           echo "### Caption that would be posted" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat posts/caption_$SLUG.txt >> $GITHUB_STEP_SUMMARY
           echo >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Attach reel (dry run only)
+      - name: Attach slides (dry run only)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4
         with:
-          name: dry-run-reel
+          name: dry-run-post
           path: dryrun_out/
           retention-days: 7
 
@@ -84,18 +94,18 @@ jobs:
         run: |
           git config user.name "rootedandrich-bot"
           git config user.email "rootedandrich-bot@users.noreply.github.com"
-          git add posts/
+          git add posts/latest.txt posts/latest_item.txt posts/latest_format.txt posts/caption_*.txt
           git commit -m "Post $(cat posts/latest.txt)" || echo "Nothing to commit"
           git push
 
-      - name: Publish reel to Instagram
+      - name: Publish to Instagram
         if: ${{ steps.build.outputs.generated == 'true' && github.event.inputs.dry_run != 'true' }}
         env:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           MEDIA_REPO: ${{ secrets.MEDIA_REPO }}
           MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
-        run: python scripts/post_reel.py
+        run: python scripts/post_carousel.py
 
       # Only after a successful publish: mark the queue item as used so it
       # is never posted twice.

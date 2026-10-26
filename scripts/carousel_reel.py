@@ -1,9 +1,9 @@
 """
 carousel_reel.py
 -----------------
-Weekly pipeline step: takes the next unpublished carousel from content/queue/,
-renders each slide as an image, and assembles them into a 1080x1920 vertical
-Reel (silent video, one slide at a time, timed by word count).
+Weekly pipeline step: takes the next unpublished carousel from content/queue/ and
+renders it. POST_FORMAT=carousel (default) makes one 1080x1350 JPEG per slide for a
+swipeable feed post; POST_FORMAT=reel makes a silent 1080x1920 video instead.
 
 Writes the same files the old pipeline wrote, so post_reel.py keeps working:
   posts/reel_<slug>.mp4
@@ -199,9 +199,30 @@ def build_caption(item):
     return f"{item['caption'].strip()}\n\n.\n.\n.\n{item['hashtags'].strip()}"
 
 
+def post_format():
+    fmt = os.environ.get("POST_FORMAT", "carousel").strip().lower()
+    if fmt not in ("carousel", "reel"):
+        raise ValueError(f"POST_FORMAT must be 'carousel' or 'reel', got '{fmt}'")
+    return fmt
+
+
+def build_carousel(slides, out_dir):
+    """One JPEG per slide (Instagram's API accepts JPEG only, not PNG), 1080x1350."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for i, s in enumerate(slides, 1):
+        img = render_slide(s, i, len(slides))
+        p = out_dir / f"slide_{i:02d}.jpg"
+        img.save(p, "JPEG", quality=95, subsampling=0)
+        paths.append(p)
+    return paths
+
+
 def generate():
     POSTS_DIR.mkdir(exist_ok=True)
     BUILD_DIR.mkdir(exist_ok=True)
+    fmt = post_format()
 
     item = next_item()
     if item is None:
@@ -212,26 +233,32 @@ def generate():
 
     validate(item)
     slides = item["slides"]
-    print(f"Building reel for '{item['id']}' ({len(slides)} slides)")
-
-    frame_paths, durations = [], []
-    for i, s in enumerate(slides, 1):
-        frame = to_reel_frame(render_slide(s, i, len(slides)))
-        p = BUILD_DIR / f"frame_{i:02d}.png"
-        frame.save(p)
-        frame_paths.append(p)
-        durations.append(slide_seconds(s))
+    if fmt == "carousel" and len(slides) > 10:
+        raise ValueError("Instagram carousels take at most 10 slides through the API")
+    print(f"Building {fmt} for '{item['id']}' ({len(slides)} slides)")
 
     slug = datetime.now(timezone.utc).strftime("%Y-%m-%d_%H%M%S")
-    video_path = POSTS_DIR / f"reel_{slug}.mp4"
-    build_video(frame_paths, durations, video_path)
+
+    if fmt == "carousel":
+        paths = build_carousel(slides, POSTS_DIR / f"carousel_{slug}")
+        print(f"Built {len(paths)} slide images in posts/carousel_{slug}/")
+    else:
+        frame_paths, durations = [], []
+        for i, s in enumerate(slides, 1):
+            frame = to_reel_frame(render_slide(s, i, len(slides)))
+            p = BUILD_DIR / f"frame_{i:02d}.png"
+            frame.save(p)
+            frame_paths.append(p)
+            durations.append(slide_seconds(s))
+        video_path = POSTS_DIR / f"reel_{slug}.mp4"
+        build_video(frame_paths, durations, video_path)
+        print(f"Built {video_path} ({sum(durations):.0f}s total)")
 
     (POSTS_DIR / f"caption_{slug}.txt").write_text(build_caption(item), encoding="utf-8")
     (POSTS_DIR / "latest.txt").write_text(slug)
     (POSTS_DIR / "latest_item.txt").write_text(item["id"])
-
+    (POSTS_DIR / "latest_format.txt").write_text(fmt)
     signal_github_output(generated=True)
-    print(f"Built {video_path} ({sum(durations):.0f}s total)")
 
 
 def mark_published():

@@ -1,0 +1,43 @@
+name: Rooted and Rich - Token Watch
+
+on:
+  schedule:
+    - cron: '30 3 * * *'   # every day 9:00 AM IST
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+
+      - name: Check tokens
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          MEDIA_REPO: ${{ secrets.MEDIA_REPO }}
+          MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
+        run: python scripts/token_watch.py
+
+      # One open issue at a time: no daily spam while it is still unresolved.
+      # Close the issue after you fix the token; if the problem persists a new one opens.
+      - name: Open an issue (GitHub emails you) if a token needs attention
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -f token_issue.md ]; then
+            OPEN=$(gh issue list --state open --search "Token action needed in:title" --json number --jq 'length')
+            if [ "$OPEN" = "0" ]; then
+              gh issue create --title "Token action needed" --body-file token_issue.md
+            else
+              echo "A 'Token action needed' issue is already open; not opening another."
+            fi
+          fi

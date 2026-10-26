@@ -1,27 +1,39 @@
 """
 research_carousel.py
 ---------------------
-Researches the next figure in content/topics.json and writes a ready-to-post
-carousel into content/queue/ (the file carousel_reel.py posts from).
+Researches the next subject in content/topics.json and writes a ready-to-post
+carousel into content/queue/ (the folder carousel_reel.py posts from).
 
-How it keeps facts honest (this is the whole point of the script):
-  1. It downloads real source text (Wikipedia, plus any extra public-domain
-     URLs listed for that figure).
+A "subject" can be a real person, a fictional character, a book, a film or a
+TV/anime/cartoon series. Anything with a genuine lesson about money,
+discipline, power or faith that is worth sharing.
+
+How it keeps facts honest (the whole point of this script):
+  1. It downloads real source text: the subject's Wikipedia article, the
+     article of the work it belongs to (for characters), and any extra
+     public URLs you list for it (Project Gutenberg texts, Wikisource, etc.).
   2. Gemini may ONLY use that text, and must attach a word-for-word excerpt
      ("evidence") to every slide.
-  3. The script then checks, in plain code, that each excerpt really appears
-     in the source and that every number on a slide appears in the source.
-     Any slide that fails -> the whole attempt is rejected and retried with
-     feedback (max 3 attempts per figure).
-  4. Slide text is test-rendered, so overflowing slides are rejected too.
+  3. Plain code (no AI) then checks that each excerpt really appears in the
+     source and that every number on a slide appears in the source.
+  4. Fiction and books get extra rules: the story must be named up front,
+     everything is framed as "in the story" (never as real history), and
+     long quotes from the work are rejected (copyright).
+  5. A failed check rejects the whole draft; it retries with the error list
+     (max 3 attempts per subject).
 
 If nothing passes, NOTHING is queued and the run fails loudly (GitHub emails
 you). There is no fallback content, by design.
 
+It also finds new subjects by itself: when fewer than LOW_WATER unused
+subjects remain in topics.json, Gemini proposes new ones and the script keeps
+only those that exist as substantial Wikipedia articles.
+
 Usage:
-  python scripts/research_carousel.py                 # next figure, writes to queue
-  python scripts/research_carousel.py --dry-run       # print draft, write nothing
-  python scripts/research_carousel.py --figure "Seneca the Younger"
+  python scripts/research_carousel.py                 # next subject, writes to queue
+  python scripts/research_carousel.py --dry-run       # draft only, writes nothing
+  python scripts/research_carousel.py --figure "Tyrion Lannister"
+  python scripts/research_carousel.py --discover      # just add new subjects to topics.json
 
 Env: GEMINI_API_KEY (required), RESEARCH_MODEL (optional)
 """
@@ -51,14 +63,27 @@ MAX_SOURCE_CHARS = 60000
 MAX_ATTEMPTS_PER_FIGURE = 3
 MAX_FIGURES_PER_RUN = 3
 MAX_FAILURES_BEFORE_SKIP = 2
+LOW_WATER = 6            # discover new subjects when fewer than this many remain
+DISCOVER_COUNT = 14      # how many candidates to ask Gemini for
+MIN_ARTICLE_CHARS = 4000  # a candidate needs a substantial Wikipedia article
 
 N_SLIDES = 10
 MIN_EVIDENCE_WORDS = 6   # keep in sync with the "6-30 words" instruction in the prompt
 MAX_HEADING_WORDS = 12
 MAX_BODY_WORDS = 48
+MAX_QUOTE_WORDS_WORKS = 6  # longest quote allowed from a book/film/series
 CTA_LINE = "Save this. Send it to the guy who needs it."
 
 BROAD_HASHTAGS = "#motivation #mindset #wealth #faith #entrepreneur"
+
+KINDS = {
+    "person": "a real historical person",
+    "fictional_character": "a fictional character",
+    "book": "a book",
+    "film": "a film",
+    "series": "a TV, web, anime or cartoon series",
+}
+WORK_KINDS = {"fictional_character", "book", "film", "series"}  # not a real person
 
 
 # --------------------------------------------------------------------------
@@ -101,7 +126,7 @@ def fetch_wikipedia(title):
     resp = requests.get(
         "https://en.wikipedia.org/w/api.php",
         params={
-            "action": "query", "prop": "extracts", "explaintext": 1,
+            "action": "query", "prop": "extracts|pageprops", "explaintext": 1,
             "exsectionformat": "plain", "redirects": 1, "format": "json",
             "titles": title,
         },
@@ -113,6 +138,9 @@ def fetch_wikipedia(title):
     page = next(iter(pages.values()))
     if "missing" in page or not page.get("extract"):
         raise ValueError(f"Wikipedia has no article titled '{title}'")
+    if "disambiguation" in (page.get("pageprops") or {}):
+        raise ValueError(f"'{title}' is a disambiguation page on Wikipedia; use the exact "
+                         f"article title, e.g. 'Name (film)'")
     url = "https://en.wikipedia.org/wiki/" + quote(page["title"].replace(" ", "_"))
     return page["title"], cut(page["extract"], MAX_SOURCE_CHARS), url
 
@@ -128,9 +156,20 @@ def gather_sources(figure):
     title, text, url = fetch_wikipedia(figure["title"])
     blocks = [f"=== SOURCE 1: Wikipedia, '{title}' ===\n{text}"]
     sources = [{"title": f"Wikipedia: {title}", "url": url}]
-    for i, extra in enumerate(figure.get("extra_sources", []), start=2):
+
+    # A character's own article is often thin; the work it belongs to is not.
+    work = figure.get("work")
+    if work:
         try:
-            blocks.append(f"=== SOURCE {i}: {extra} ===\n{fetch_extra(extra)}")
+            w_title, w_text, w_url = fetch_wikipedia(work)
+            blocks.append(f"=== SOURCE {len(blocks) + 1}: Wikipedia, '{w_title}' ===\n{w_text}")
+            sources.append({"title": f"Wikipedia: {w_title}", "url": w_url})
+        except Exception as e:
+            print(f"Skipping work article '{work}': {e}")
+
+    for extra in figure.get("extra_sources", []):
+        try:
+            blocks.append(f"=== SOURCE {len(blocks) + 1}: {extra} ===\n{fetch_extra(extra)}")
             sources.append({"title": extra, "url": extra})
         except Exception as e:  # an extra source failing must not kill the run
             print(f"Skipping extra source {extra}: {e}")
@@ -205,9 +244,20 @@ def numbers_ok(text, source_flat, source_words=frozenset()):
     return missing
 
 
-def validate_draft(data, source_text):
+def strip_parens(title):
+    return re.sub(r"\s*\([^)]*\)", "", title).strip()
+
+
+def long_quotes(text, max_words):
+    """Quoted passages longer than max_words (straight or curly quotes)."""
+    found = re.findall(r"[\"“]([^\"”]+)[\"”]", text)
+    return [q for q in found if len(q.split()) > max_words]
+
+
+def validate_draft(data, source_text, figure=None):
     """Returns a list of problems. Empty list = the draft is acceptable."""
     problems = []
+    kind = (figure or {}).get("kind", "person")
     source_norm = norm(source_text)
     source_flat = re.sub(r"(?<=\d),(?=\d)", "", source_text)
     source_words = word_numbers(source_text)
@@ -240,6 +290,11 @@ def validate_draft(data, source_text):
         if bad:
             problems.append(f"slide {i}: numbers not found in source: {bad}")
 
+        if kind in WORK_KINDS:
+            for q in long_quotes(heading + " " + body, MAX_QUOTE_WORDS_WORKS):
+                problems.append(f"slide {i}: quotes more than {MAX_QUOTE_WORDS_WORKS} words "
+                                f"from the work; paraphrase instead: '{q[:60]}'")
+
     caption = (data.get("caption") or "").strip()
     if not caption:
         problems.append("caption missing")
@@ -253,6 +308,17 @@ def validate_draft(data, source_text):
     tags = data.get("specific_hashtags") or []
     if len(tags) != 5 or not all(re.fullmatch(r"#[a-z0-9]{3,30}", t) for t in tags):
         problems.append("specific_hashtags must be exactly 5 lowercase tags like #stoicism")
+
+    # Stories must be named up front so nobody mistakes fiction for history.
+    if kind in WORK_KINDS and figure:
+        opening = norm(" ".join((slides[0].get("heading", ""), slides[0].get("body", ""),
+                                 slides[1].get("heading", ""), slides[1].get("body", ""))))
+        names = [strip_parens(figure["title"])]
+        if figure.get("work"):
+            names.append(strip_parens(figure["work"]))
+        if not any(norm(n) and norm(n) in opening for n in names):
+            problems.append("slides 1-2 must name the story/work "
+                            f"({' or '.join(names)}) so readers know it is not real history")
 
     if not problems:  # only render-test once the text itself is clean
         for i, s in enumerate(slides, start=1):
@@ -271,14 +337,35 @@ def validate_draft(data, source_text):
 # --------------------------------------------------------------------------
 # Gemini
 # --------------------------------------------------------------------------
+def kind_rules(figure):
+    kind = figure.get("kind", "person")
+    if kind == "person":
+        return ("This subject is a REAL PERSON. State facts as the source states them. "
+                "Real quotes are allowed only if the SOURCE contains the quote with its attribution.")
+    label = KINDS.get(kind, "a creative work")
+    nonfiction = ("If the work is non-fiction, attribute every claim to the author "
+                  "('the author argues...') and do not present the author's claims as proven fact. ")
+    return (f"This subject is {label}. It is NOT a real person's life story.\n"
+            "   - Name the story or book in slide 1 or slide 2 (for example 'In The Godfather...').\n"
+            "   - Frame every plot point as what happens IN the story, or what the creators, "
+            "author or critics say. Never present fiction as real history.\n"
+            f"   - {nonfiction}\n"
+            f"   - The work is under copyright: PARAPHRASE. Do not quote dialogue, lines or "
+            f"passages from it (max {MAX_QUOTE_WORDS_WORKS} words in quotation marks, only if the "
+            "SOURCE contains them).\n"
+            "   - Slide 9 draws the real-life lesson, clearly labelled as the lesson for the reader.")
+
+
 def build_prompt(figure, source_text, feedback=None):
     prompt = f"""You write Instagram carousels for @rootedand.rich, an account for men aged \
-18-34 in India and the US who care about money, discipline, and power. Voice: direct, blunt, \
-talks TO the reader as "you", short sentences, zero fluff, no motivational-poster language. \
-Specific beats abstract every time.
+18-34 in India and the US who care about money, discipline, power and faith. Voice: direct, \
+blunt, talks TO the reader as "you", short sentences, zero fluff, no motivational-poster \
+language. Specific beats abstract every time.
 
-FIGURE: {figure['title']}
+SUBJECT: {figure['title']}
+KIND: {figure.get('kind', 'person')}
 LANE: {figure.get('lane', 'money, discipline, power')}
+{('ANGLE HINT: ' + figure['angle_hint']) if figure.get('angle_hint') else ''}
 
 HARD RULES (a script will check these and reject the draft if broken):
 1. Use ONLY facts stated in the SOURCE text below. Never add anything from your own memory, \
@@ -289,8 +376,8 @@ Do not stitch two passages together.
 3. Every number, year, amount or percentage on a slide must appear in the SOURCE.
 4. If the source hedges a claim (legend, "reportedly", "according to tradition", disputed), \
 skip it or clearly say it is disputed.
-5. Do not use famous quotes unless the SOURCE contains the quote with its attribution.
-6. Heading: max {MAX_HEADING_WORDS} words. Body: max {MAX_BODY_WORDS} words. Use \\n for line breaks.
+5. Heading: max {MAX_HEADING_WORDS} words. Body: max {MAX_BODY_WORDS} words. Use \\n for line breaks.
+6. {kind_rules(figure)}
 
 STRUCTURE ({N_SLIDES} slides):
 - Slide 1: scroll-stopping hook. One surprising, specific fact stated as a bold claim.
@@ -302,8 +389,8 @@ detail, not just wins.
 "{CTA_LINE}" (slide 10 evidence can be an empty string).
 
 CAPTION: 2-3 sentences, same voice, must end with a question to the reader.
-HASHTAGS: exactly 5 lowercase topic hashtags specific to this figure and theme \
-(like #stoicism, #romanemperors). Do not include #rootedandrich.
+HASHTAGS: exactly 5 lowercase topic hashtags specific to this subject and theme \
+(like #stoicism, #peakyblinders). Do not include #rootedandrich.
 
 Return ONLY this JSON, no markdown fences:
 {{"angle": "one line on the angle you chose",
@@ -320,7 +407,7 @@ SOURCE TEXT:
     return prompt
 
 
-def call_gemini(prompt):
+def call_gemini(prompt, temperature=0.6):
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("GEMINI_API_KEY is not set")
@@ -330,7 +417,7 @@ def call_gemini(prompt):
                   "HARM_CATEGORY_SEXUALLY_EXPLICIT", "HARM_CATEGORY_DANGEROUS_CONTENT"]
     body = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.6},
+        "generationConfig": {"responseMimeType": "application/json", "temperature": temperature},
         "safetySettings": [{"category": c, "threshold": "BLOCK_ONLY_HIGH"} for c in categories],
     }
     resp = requests.post(url, params={"key": api_key}, json=body, timeout=120)
@@ -351,10 +438,88 @@ def call_gemini(prompt):
 
 
 # --------------------------------------------------------------------------
+# Finding new subjects by itself
+# --------------------------------------------------------------------------
+def discovery_prompt(existing_titles, n):
+    return f"""You choose subjects for @rootedand.rich, an Instagram account for men aged 18-34 \
+in India and the US about money, discipline, power and faith. One carousel is made per subject.
+
+Propose {n} NEW subjects. A subject is worth it only if it has a genuine, specific lesson on money, \
+discipline, power or faith that most people don't already know. Prefer lesser-known angles over \
+the ten most famous names.
+
+MIX (approximately):
+- 5 real historical people from different eras and regions (at least 2 from outside Europe and \
+the US: India, China, Africa, the Middle East, Latin America...)
+- 3 fictional characters from films, TV, anime, cartoons, comics or novels
+- 3 books (classic or modern, fiction or non-fiction)
+- 3 films or series
+
+RULES:
+- "title" must be the EXACT English Wikipedia article title (include disambiguators such as \
+"(film)" or "(TV series)" when Wikipedia does).
+- kind is one of: person, fictional_character, book, film, series.
+- For a fictional_character, give "work": the exact Wikipedia title of the film/series/book they \
+come from.
+- No living people. No politicians currently in office. No sacred religious figures. No real \
+criminals or hate figures. Cautionary fictional characters are fine.
+- Do not repeat any of these existing subjects: {json.dumps(sorted(existing_titles))[:3500]}
+
+Return ONLY this JSON:
+{{"candidates": [{{"title": "...", "kind": "person", "lane": "money|discipline|power|faith (or two joined by ' and ')", \
+"work": "only for fictional_character", "why": "one line: the specific lesson"}}]}}"""
+
+
+def wiki_check(title):
+    """(resolved_title, article_length) or raises ValueError. Cheap existence test."""
+    resolved, text, _ = fetch_wikipedia(title)
+    return resolved, len(text)
+
+
+def discover_topics(existing_titles, n=DISCOVER_COUNT):
+    """Asks Gemini for candidates; keeps only real, substantial, non-duplicate
+    Wikipedia articles. Returns the list of accepted topic dicts."""
+    data = call_gemini(discovery_prompt(existing_titles, n), temperature=0.9)
+    seen = {norm(t) for t in existing_titles}
+    accepted = []
+    for c in data.get("candidates", []):
+        title, kind = (c.get("title") or "").strip(), (c.get("kind") or "").strip()
+        if not title or kind not in KINDS:
+            print(f"  skip (bad shape): {c}")
+            continue
+        try:
+            resolved, length = wiki_check(title)
+        except Exception as e:
+            print(f"  skip '{title}': {e}")
+            continue
+        if length < MIN_ARTICLE_CHARS:
+            print(f"  skip '{resolved}': article too short ({length} chars)")
+            continue
+        if norm(resolved) in seen:
+            print(f"  skip '{resolved}': already in the list")
+            continue
+        entry = {"title": resolved, "kind": kind, "lane": c.get("lane", "money and discipline")}
+        if kind == "fictional_character" and c.get("work"):
+            entry["work"] = c["work"].strip()
+        if c.get("why"):
+            entry["angle_hint"] = c["why"].strip()
+        seen.add(norm(resolved))
+        accepted.append(entry)
+        print(f"  + {resolved} ({kind})")
+    return accepted
+
+
+# --------------------------------------------------------------------------
 # State, queue, output
 # --------------------------------------------------------------------------
 def load_json(path, default):
     return json.loads(path.read_text(encoding="utf-8")) if path.exists() else default
+
+
+def unused_figures(topics, state):
+    return [f for f in topics
+            if f["title"] not in state["done"]
+            and state["failures"].get(f["title"], 0) < MAX_FAILURES_BEFORE_SKIP]
 
 
 def pick_figures(forced_title=None):
@@ -362,11 +527,8 @@ def pick_figures(forced_title=None):
     state = load_json(STATE_FILE, {"done": [], "failures": {}})
     if forced_title:
         match = [f for f in topics if f["title"].lower() == forced_title.lower()]
-        return [match[0] if match else {"title": forced_title}], state
-    todo = [f for f in topics
-            if f["title"] not in state["done"]
-            and state["failures"].get(f["title"], 0) < MAX_FAILURES_BEFORE_SKIP]
-    return todo, state
+        return [match[0] if match else {"title": forced_title, "kind": "person"}], state
+    return unused_figures(topics, state), state
 
 
 def slugify(s):
@@ -396,6 +558,7 @@ def build_item(figure, sources, data):
     return {
         "id": slugify(figure["title"]),
         "figure": figure["title"],
+        "kind": figure.get("kind", "person"),
         "angle": data.get("angle", ""),
         "caption": f"{data['caption'].strip()}\n\n{src_line}",
         "hashtags": hashtags,
@@ -404,12 +567,15 @@ def build_item(figure, sources, data):
     }
 
 
-def write_review(item, filename):
-    lines = [f"**{item['figure']}** is queued as `content/queue/{filename}` and will post "
-             f"in queue order (Tue / Thu / Sun, 8 PM IST).", "",
-             "**To cancel or edit it:** open that file on GitHub and delete or edit it "
-             "before it posts. Doing nothing = it posts as-is.", "",
-             f"Angle: {item['angle']}", "", "### Slides"]
+def write_review(item, filename=None):
+    where = (f"is queued as `content/queue/{filename}` and will post in queue order "
+             f"(Tue / Thu / Sun, 8 PM IST)." if filename else
+             "was drafted as a DRY RUN. Nothing was queued or saved.")
+    lines = [f"## {item['figure']} ({item['kind']})", "", f"This {where}", ""]
+    if filename:
+        lines += ["**To cancel or edit it:** open that file on GitHub and delete or edit it "
+                  "before it posts. Doing nothing = it posts as-is.", ""]
+    lines += [f"Angle: {item['angle']}", "", "### Slides"]
     for i, s in enumerate(item["slides"], 1):
         lines += [f"**{i}. {s['heading']}**", s["body"].replace("\n", "  \n"), ""]
         if s["evidence"]:
@@ -422,9 +588,9 @@ def write_review(item, filename):
 
 def research_figure(figure):
     """Returns (item, problems_from_last_attempt)."""
-    print(f"\n=== Researching: {figure['title']} ===")
+    print(f"\n=== Researching: {figure['title']} ({figure.get('kind', 'person')}) ===")
     source_text, sources = gather_sources(figure)
-    print(f"Source text: {len(source_text):,} characters")
+    print(f"Source text: {len(source_text):,} characters from {len(sources)} source(s)")
 
     feedback = None
     for attempt in range(1, MAX_ATTEMPTS_PER_FIGURE + 1):
@@ -435,7 +601,7 @@ def research_figure(figure):
             feedback = [f"your last response could not be used: {e}"]
             print(f"  failed: {e}")
             continue
-        problems = validate_draft(data, source_text)
+        problems = validate_draft(data, source_text, figure)
         if not problems:
             item = build_item(figure, sources, data)
             validate(item)  # same checks the poster applies
@@ -445,15 +611,50 @@ def research_figure(figure):
     return None, feedback or []
 
 
+def top_up_topics(dry_run):
+    """If the unused list is running low, ask for new subjects and save them."""
+    topics_doc = load_json(TOPICS_FILE, {"figures": []})
+    state = load_json(STATE_FILE, {"done": [], "failures": {}})
+    remaining = len(unused_figures(topics_doc["figures"], state))
+    if remaining >= LOW_WATER:
+        return
+    print(f"Only {remaining} unused subjects left; looking for new ones...")
+    try:
+        new = discover_topics([f["title"] for f in topics_doc["figures"]])
+    except Exception as e:  # discovery is a bonus; never block today's research
+        print(f"Discovery failed (continuing with what is in the list): {e}")
+        return
+    if new and not dry_run:
+        topics_doc["figures"].extend(new)
+        TOPICS_FILE.write_text(json.dumps(topics_doc, indent=2, ensure_ascii=False),
+                               encoding="utf-8")
+        print(f"Added {len(new)} new subjects to {TOPICS_FILE}")
+    elif new:
+        print(f"(dry run) would add {len(new)} new subjects")
+
+
 def main():
     dry_run = "--dry-run" in sys.argv
     forced = None
     if "--figure" in sys.argv:
         forced = sys.argv[sys.argv.index("--figure") + 1]
 
+    if "--discover" in sys.argv:
+        topics_doc = load_json(TOPICS_FILE, {"figures": []})
+        new = discover_topics([f["title"] for f in topics_doc["figures"]])
+        if new and not dry_run:
+            topics_doc["figures"].extend(new)
+            TOPICS_FILE.write_text(json.dumps(topics_doc, indent=2, ensure_ascii=False),
+                                   encoding="utf-8")
+        print(f"{'Would add' if dry_run else 'Added'} {len(new)} new subjects.")
+        return
+
+    if not forced:
+        top_up_topics(dry_run)
+
     figures, state = pick_figures(forced)
     if not figures:
-        print("::error::No figures left in content/topics.json. Add more figures.")
+        print("::error::No subjects left in content/topics.json and discovery found none.")
         sys.exit(1)
 
     for figure in figures[:MAX_FIGURES_PER_RUN]:
@@ -470,6 +671,7 @@ def main():
             continue
 
         if dry_run:
+            write_review(item)  # the workflow shows this on the run's summary page
             print(json.dumps(item, indent=2, ensure_ascii=False))
             return
 
@@ -483,7 +685,7 @@ def main():
         print(f"\nQueued content/queue/{filename}")
         return
 
-    print("::error::Could not produce a verified carousel for any figure this run. "
+    print("::error::Could not produce a verified carousel for any subject this run. "
           "Nothing was queued.")
     sys.exit(1)
 

@@ -47,16 +47,34 @@ jobs:
         id: build
         run: python scripts/carousel_reel.py
 
-      # Dry run: attach the video so you can watch it before trusting the pipeline
+      # Dry run: attach ONLY the reel that was just built (not the 100+ old ones in posts/)
+      - name: Collect this run's reel (dry run only)
+        if: ${{ github.event.inputs.dry_run == 'true' }}
+        run: |
+          mkdir dryrun_out
+          SLUG=$(cat posts/latest.txt)
+          cp posts/reel_$SLUG.mp4 posts/caption_$SLUG.txt dryrun_out/
+          ls -la dryrun_out
+          echo "### Caption that would be posted" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat posts/caption_$SLUG.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
       - name: Attach reel (dry run only)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: dry-run-reel
-          path: |
-            posts/reel_*.mp4
-            posts/caption_*.txt
+          path: dryrun_out/
           retention-days: 7
+
+      # Posts nothing. Fails the run early, with a readable reason, if the
+      # Instagram token is expired. Runs on dry runs too, so you can test it.
+      - name: Check Instagram token
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: python scripts/post_reel.py --check-token
 
       - name: Commit and push generated post
         if: ${{ steps.build.outputs.generated == 'true' && github.event.inputs.dry_run != 'true' }}

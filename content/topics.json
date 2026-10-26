@@ -1,35 +1,238 @@
 {
-  "_note": "Figures the research script works through in order. 'title' must be the exact English Wikipedia article title. 'extra_sources' (optional) are public-domain text URLs fetched in addition to Wikipedia. Add or reorder freely; already-researched titles are skipped automatically.",
+  "_note": "Subjects the research script works through in order. kind = person | fictional_character | book | film | series. 'title' must be the EXACT English Wikipedia article title. Optional: 'work' (Wikipedia title of the film/series/book a character comes from), 'extra_sources' (public-domain text URLs such as Project Gutenberg), 'angle_hint'. When fewer than 6 unused subjects remain, the script finds new ones by itself.",
   "figures": [
-    {"title": "Marcus Aurelius", "lane": "discipline and power"},
-    {"title": "Andrew Carnegie", "lane": "money and giving"},
-    {"title": "Niccolò Machiavelli", "lane": "power"},
-    {"title": "Chanakya", "lane": "power and money"},
-    {"title": "John D. Rockefeller", "lane": "money and discipline"},
-    {"title": "Seneca the Younger", "lane": "money and discipline"},
-    {"title": "Cosimo de' Medici", "lane": "money and power"},
-    {"title": "Jamsetji Tata", "lane": "money and legacy"},
-    {"title": "Cato the Elder", "lane": "discipline and money"},
-    {"title": "Jakob Fugger", "lane": "money and power"},
-    {"title": "Sun Tzu", "lane": "power"},
-    {"title": "Epictetus", "lane": "discipline"},
-    {"title": "Ibn Khaldun", "lane": "money and power"},
-    {"title": "Hetty Green", "lane": "money"},
-    {"title": "Miyamoto Musashi", "lane": "discipline"},
-    {"title": "Theodore Roosevelt", "lane": "discipline and power"},
-    {"title": "Mansa Musa", "lane": "money and power"},
-    {"title": "Frederick Douglass", "lane": "discipline"},
-    {"title": "Alexander Hamilton", "lane": "money and power"},
-    {"title": "Thiruvalluvar", "lane": "money and discipline"},
-    {"title": "Cornelius Vanderbilt", "lane": "money and power"},
-    {"title": "Henry Ford", "lane": "money and discipline"},
-    {"title": "J. P. Morgan", "lane": "money and power"},
-    {"title": "Adam Smith", "lane": "money"},
-    {"title": "Abraham Lincoln", "lane": "discipline and power"},
-    {"title": "Winston Churchill", "lane": "discipline and power"},
-    {"title": "Thomas Edison", "lane": "discipline and money"},
-    {"title": "Ashoka", "lane": "power"},
-    {"title": "Isaac Newton", "lane": "discipline and money"},
-    {"title": "Confucius", "lane": "discipline and power"}
+    {
+      "title": "Marcus Aurelius",
+      "kind": "person",
+      "lane": "discipline and power"
+    },
+    {
+      "title": "Michael Corleone",
+      "kind": "fictional_character",
+      "lane": "power",
+      "work": "The Godfather"
+    },
+    {
+      "title": "Andrew Carnegie",
+      "kind": "person",
+      "lane": "money and giving"
+    },
+    {
+      "title": "The Richest Man in Babylon",
+      "kind": "book",
+      "lane": "money"
+    },
+    {
+      "title": "Tyrion Lannister",
+      "kind": "fictional_character",
+      "lane": "power",
+      "work": "Game of Thrones"
+    },
+    {
+      "title": "Chanakya",
+      "kind": "person",
+      "lane": "power and money"
+    },
+    {
+      "title": "Rocky",
+      "kind": "film",
+      "lane": "discipline"
+    },
+    {
+      "title": "Seneca the Younger",
+      "kind": "person",
+      "lane": "money and discipline"
+    },
+    {
+      "title": "Peaky Blinders",
+      "kind": "series",
+      "lane": "money and power"
+    },
+    {
+      "title": "Jamsetji Tata",
+      "kind": "person",
+      "lane": "money and legacy"
+    },
+    {
+      "title": "The Art of War",
+      "kind": "book",
+      "lane": "power and discipline",
+      "extra_sources": [
+        "https://www.gutenberg.org/cache/epub/132/pg132.txt"
+      ]
+    },
+    {
+      "title": "Ebenezer Scrooge",
+      "kind": "fictional_character",
+      "lane": "money",
+      "work": "A Christmas Carol"
+    },
+    {
+      "title": "Niccolò Machiavelli",
+      "kind": "person",
+      "lane": "power"
+    },
+    {
+      "title": "The Pursuit of Happyness",
+      "kind": "film",
+      "lane": "money and discipline"
+    },
+    {
+      "title": "Cosimo de' Medici",
+      "kind": "person",
+      "lane": "money and power"
+    },
+    {
+      "title": "Naruto Uzumaki",
+      "kind": "fictional_character",
+      "lane": "discipline",
+      "work": "Naruto"
+    },
+    {
+      "title": "John D. Rockefeller",
+      "kind": "person",
+      "lane": "money and discipline"
+    },
+    {
+      "title": "Atomic Habits",
+      "kind": "book",
+      "lane": "discipline"
+    },
+    {
+      "title": "Gordon Gekko",
+      "kind": "fictional_character",
+      "lane": "money",
+      "work": "Wall Street (1987 film)"
+    },
+    {
+      "title": "Cato the Elder",
+      "kind": "person",
+      "lane": "discipline and money"
+    },
+    {
+      "title": "The Psychology of Money",
+      "kind": "book",
+      "lane": "money"
+    },
+    {
+      "title": "Sherlock Holmes",
+      "kind": "fictional_character",
+      "lane": "discipline"
+    },
+    {
+      "title": "Jakob Fugger",
+      "kind": "person",
+      "lane": "money and power"
+    },
+    {
+      "title": "Succession (TV series)",
+      "kind": "series",
+      "lane": "money and power"
+    },
+    {
+      "title": "Epictetus",
+      "kind": "person",
+      "lane": "discipline"
+    },
+    {
+      "title": "Man's Search for Meaning",
+      "kind": "book",
+      "lane": "discipline and faith"
+    },
+    {
+      "title": "Ibn Khaldun",
+      "kind": "person",
+      "lane": "money and power"
+    },
+    {
+      "title": "Moneyball (film)",
+      "kind": "film",
+      "lane": "money"
+    },
+    {
+      "title": "Miyamoto Musashi",
+      "kind": "person",
+      "lane": "discipline"
+    },
+    {
+      "title": "Think and Grow Rich",
+      "kind": "book",
+      "lane": "money and discipline"
+    },
+    {
+      "title": "Hetty Green",
+      "kind": "person",
+      "lane": "money"
+    },
+    {
+      "title": "Breaking Bad",
+      "kind": "series",
+      "lane": "power and discipline"
+    },
+    {
+      "title": "Mansa Musa",
+      "kind": "person",
+      "lane": "money and power"
+    },
+    {
+      "title": "The 48 Laws of Power",
+      "kind": "book",
+      "lane": "power"
+    },
+    {
+      "title": "Theodore Roosevelt",
+      "kind": "person",
+      "lane": "discipline and power"
+    },
+    {
+      "title": "Thiruvalluvar",
+      "kind": "person",
+      "lane": "money and discipline"
+    },
+    {
+      "title": "Frederick Douglass",
+      "kind": "person",
+      "lane": "discipline"
+    },
+    {
+      "title": "The Social Network",
+      "kind": "film",
+      "lane": "money and power"
+    },
+    {
+      "title": "Alexander Hamilton",
+      "kind": "person",
+      "lane": "money and power"
+    },
+    {
+      "title": "Rich Dad Poor Dad",
+      "kind": "book",
+      "lane": "money"
+    },
+    {
+      "title": "Sun Tzu",
+      "kind": "person",
+      "lane": "power"
+    },
+    {
+      "title": "Henry Ford",
+      "kind": "person",
+      "lane": "money and discipline"
+    },
+    {
+      "title": "Vikings (2013 TV series)",
+      "kind": "series",
+      "lane": "power and discipline"
+    },
+    {
+      "title": "Ashoka",
+      "kind": "person",
+      "lane": "power"
+    },
+    {
+      "title": "Thomas Edison",
+      "kind": "person",
+      "lane": "discipline and money"
+    }
   ]
 }

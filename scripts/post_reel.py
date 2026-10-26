@@ -20,12 +20,44 @@ Required GitHub Actions secrets (reuses your existing two, adds two new):
 
 import os
 import subprocess
+import sys
 import time
 
 import requests
 
 GRAPH_VERSION = "v21.0"
 GRAPH_HOST = "https://graph.instagram.com"
+
+
+def explain_meta_error(raw):
+    """One readable line from Meta's JSON error, plus the likely fix."""
+    try:
+        err = requests.models.complexjson.loads(raw).get("error", {})
+    except Exception:
+        return f"Unreadable response from Meta: {raw[:300]}"
+    msg, code, sub = err.get("message", "?"), err.get("code"), err.get("error_subcode")
+    hint = ""
+    if code == 190 or "token" in msg.lower() or "session" in msg.lower():
+        hint = (" FIX: the Instagram access token is expired or invalid. Generate a new "
+                "token in the Meta developer dashboard (Instagram > API setup > Generate token) "
+                "and replace the IG_ACCESS_TOKEN secret in GitHub > Settings > Secrets > Actions.")
+    return f"Meta error {code}/{sub}: {msg}.{hint}"
+
+
+def check_token():
+    """Cheap pre-flight: is the Instagram token valid right now? Posts nothing."""
+    ig_user_id = os.environ["IG_USER_ID"].strip()
+    token = os.environ["IG_ACCESS_TOKEN"].strip()
+    resp = requests.get(f"{GRAPH_HOST}/{GRAPH_VERSION}/me",
+                        params={"fields": "user_id,username", "access_token": token}, timeout=30)
+    if not resp.ok:
+        print(f"::error title=Instagram token check failed::{explain_meta_error(resp.text)}")
+        sys.exit(1)
+    info = resp.json()
+    print(f"Instagram token OK for @{info.get('username')} (user_id {info.get('user_id')}).")
+    if str(info.get("user_id")) != ig_user_id and str(info.get("id")) != ig_user_id:
+        print("::warning title=IG_USER_ID mismatch::The token belongs to a different account "
+              "than the IG_USER_ID secret.")
 
 
 def get_slug():
@@ -97,6 +129,7 @@ def create_media_container(ig_user_id, token, video_url, caption=None, media_typ
     resp = requests.post(url, data=data)
     if not resp.ok:
         print(f"Meta API rejected the request. Full response: {resp.text}")
+        print(f"::error title=Instagram rejected the reel::{explain_meta_error(resp.text)}")
     resp.raise_for_status()
     return resp.json()["id"]
 
@@ -122,6 +155,7 @@ def publish_container(ig_user_id, token, container_id):
     resp = requests.post(url, data={"creation_id": container_id, "access_token": token})
     if not resp.ok:
         print(f"Meta API rejected the publish request. Full response: {resp.text}")
+        print(f"::error title=Instagram rejected the publish::{explain_meta_error(resp.text)}")
     resp.raise_for_status()
     return resp.json()
 
@@ -155,4 +189,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if "--check-token" in sys.argv:
+        check_token()
+    else:
+        main()

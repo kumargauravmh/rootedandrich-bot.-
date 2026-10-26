@@ -197,5 +197,155 @@ class QueueAndStateTests(unittest.TestCase):
         self.assertEqual([f["title"] for f in todo], ["C"])
 
 
+FICTION = {"title": "Michael Corleone", "kind": "fictional_character", "work": "The Godfather"}
+
+
+def fiction_draft():
+    d = good_draft()
+    d["slides"][0]["heading"] = "In The Godfather, Michael walks away."
+    return d
+
+
+class FictionRuleTests(unittest.TestCase):
+    def check(self, draft, figure=FICTION):
+        return r.validate_draft(draft, SOURCE, figure)
+
+    def test_fiction_draft_that_names_the_story_passes(self):
+        self.assertEqual(self.check(fiction_draft()), [])
+
+    def test_fiction_must_name_the_story_in_first_two_slides(self):
+        problems = self.check(good_draft())  # never mentions the film or the character
+        self.assertTrue(any("must name the story" in p for p in problems), problems)
+
+    def test_character_name_alone_also_counts(self):
+        d = good_draft()
+        d["slides"][1]["body"] = "Michael Corleone tracked it every night."
+        self.assertEqual(self.check(d), [])
+
+    def test_long_quote_from_a_work_is_rejected(self):
+        d = fiction_draft()
+        d["slides"][3]["body"] = 'He says "make no expense but to do good to others or yourself" once.'
+        problems = self.check(d)
+        self.assertTrue(any("slide 4" in p and "quotes more than" in p for p in problems), problems)
+
+    def test_short_quote_from_a_work_is_fine(self):
+        d = fiction_draft()
+        d["slides"][3]["body"] = 'He calls it "waste nothing" every night.'
+        self.assertEqual(self.check(d), [])
+
+    def test_same_long_quote_is_fine_for_a_real_person(self):
+        d = good_draft()
+        d["slides"][3]["body"] = 'He wrote "make no expense but to do good to others or yourself".'
+        self.assertEqual(self.check(d, {"title": "Benjamin Franklin", "kind": "person"}), [])
+
+    def test_book_kind_gets_the_same_rules(self):
+        problems = self.check(good_draft(), {"title": "The Art of War", "kind": "book"})
+        self.assertTrue(any("must name the story" in p for p in problems), problems)
+
+    def test_parenthesised_titles_match_without_the_parenthesis(self):
+        d = good_draft()
+        d["slides"][0]["heading"] = "Gordon Gekko says greed works."
+        fig = {"title": "Gordon Gekko", "kind": "fictional_character",
+               "work": "Wall Street (1987 film)"}
+        self.assertEqual(self.check(d, fig), [])
+
+    def test_prompt_tells_gemini_the_fiction_rules(self):
+        p = r.build_prompt(FICTION, "SRC")
+        self.assertIn("NOT a real person", p)
+        self.assertIn("PARAPHRASE", p)
+        self.assertIn("KIND: fictional_character", p)
+
+    def test_prompt_for_person_has_no_fiction_rules(self):
+        p = r.build_prompt({"title": "X", "kind": "person"}, "SRC")
+        self.assertIn("REAL PERSON", p)
+        self.assertNotIn("PARAPHRASE", p)
+
+
+class DiscoveryTests(unittest.TestCase):
+    def setUp(self):
+        self._orig = (r.call_gemini, r.wiki_check)
+
+    def tearDown(self):
+        r.call_gemini, r.wiki_check = self._orig
+
+    def test_keeps_only_real_substantial_new_valid_candidates(self):
+        r.call_gemini = lambda prompt, temperature=0.6: {"candidates": [
+            {"title": "Good Book", "kind": "book", "lane": "money", "why": "lesson"},
+            {"title": "Fake Thing", "kind": "book", "lane": "money"},          # no wikipedia page
+            {"title": "Stub Person", "kind": "person", "lane": "power"},        # too short
+            {"title": "Already Here", "kind": "person", "lane": "power"},       # duplicate
+            {"title": "Weird Kind", "kind": "podcast", "lane": "power"},        # bad kind
+            {"title": "Some Hero", "kind": "fictional_character", "lane": "discipline",
+             "work": "Some Show"},
+        ]}
+
+        def fake_wiki(title):
+            if title == "Fake Thing":
+                raise ValueError("Wikipedia has no article titled 'Fake Thing'")
+            if title == "Stub Person":
+                return title, 900
+            return title, 20000
+        r.wiki_check = fake_wiki
+        got = r.discover_topics(["Already Here"])
+        self.assertEqual([g["title"] for g in got], ["Good Book", "Some Hero"])
+        self.assertEqual(got[1]["work"], "Some Show")
+        self.assertEqual(got[0]["angle_hint"], "lesson")
+
+    def test_redirect_resolving_to_an_existing_subject_is_a_duplicate(self):
+        r.call_gemini = lambda prompt, temperature=0.6: {"candidates": [
+            {"title": "Ben Franklin", "kind": "person", "lane": "money"}]}
+        r.wiki_check = lambda t: ("Benjamin Franklin", 50000)
+        self.assertEqual(r.discover_topics(["Benjamin Franklin"]), [])
+
+
+class TopUpTests(unittest.TestCase):
+    def setUp(self):
+        self._cwd = os.getcwd()
+        self._tmp = tempfile.TemporaryDirectory()
+        os.chdir(self._tmp.name)
+        Path("content").mkdir()
+        self._orig = r.discover_topics
+        self.calls = 0
+
+        def fake(existing):
+            self.calls += 1
+            return [{"title": "Brand New", "kind": "person", "lane": "money"}]
+        r.discover_topics = fake
+
+    def tearDown(self):
+        r.discover_topics = self._orig
+        os.chdir(self._cwd)
+        self._tmp.cleanup()
+
+    def write_topics(self, n):
+        figs = [{"title": f"T{i}", "kind": "person"} for i in range(n)]
+        Path("content/topics.json").write_text(json.dumps({"figures": figs}))
+
+    def test_discovers_when_running_low(self):
+        self.write_topics(3)
+        r.top_up_topics(dry_run=False)
+        titles = [f["title"] for f in json.loads(Path("content/topics.json").read_text())["figures"]]
+        self.assertIn("Brand New", titles)
+
+    def test_does_not_discover_when_plenty_left(self):
+        self.write_topics(10)
+        r.top_up_topics(dry_run=False)
+        self.assertEqual(self.calls, 0)
+
+    def test_dry_run_never_writes(self):
+        self.write_topics(3)
+        r.top_up_topics(dry_run=True)
+        titles = [f["title"] for f in json.loads(Path("content/topics.json").read_text())["figures"]]
+        self.assertNotIn("Brand New", titles)
+
+    def test_discovery_failure_never_blocks_research(self):
+        self.write_topics(3)
+
+        def boom(existing):
+            raise RuntimeError("gemini down")
+        r.discover_topics = boom
+        r.top_up_topics(dry_run=False)  # must not raise
+
+
 if __name__ == "__main__":
     unittest.main()

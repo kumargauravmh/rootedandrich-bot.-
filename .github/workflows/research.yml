@@ -54,6 +54,13 @@ jobs:
             python scripts/research_carousel.py
           fi
 
+      # Dry run: show the whole draft on this run's summary page (no log digging)
+      - name: Show draft on the summary page
+        if: ${{ always() && github.event.inputs.dry_run == 'true' }}
+        run: |
+          if [ -f review_issue.md ]; then cat review_issue.md >> $GITHUB_STEP_SUMMARY; \
+          else echo "No draft was produced. Open the 'Research next figure' step for the reason." >> $GITHUB_STEP_SUMMARY; fi
+
       - name: Commit queued carousel
         if: ${{ github.event.inputs.dry_run != 'true' }}
         run: |

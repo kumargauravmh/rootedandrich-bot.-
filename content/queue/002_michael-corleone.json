@@ -1,0 +1,80 @@
+{
+  "id": "michael-corleone",
+  "figure": "Michael Corleone",
+  "kind": "fictional_character",
+  "angle": "The transition of Michael Corleone from an outsider to a ruthless, isolated Don.",
+  "caption": "Michael Corleone thought he could control his fate, but he only built a faster cage. True power isn't just about winning; it's about what you lose to get there. Are you building a legacy or just a faster way to ruin?\n\nSource: Wikipedia: Michael Corleone; Wikipedia: The Godfather",
+  "hashtags": "#thegodfather #michaelcorleone #mafia #power #discipline #rootedandrich #motivation #mindset #wealth #faith #entrepreneur",
+  "sources": [
+    {
+      "title": "Wikipedia: Michael Corleone",
+      "url": "https://en.wikipedia.org/wiki/Michael_Corleone"
+    },
+    {
+      "title": "Wikipedia: The Godfather",
+      "url": "https://en.wikipedia.org/wiki/The_Godfather"
+    }
+  ],
+  "slides": [
+    {
+      "kind": "hook",
+      "heading": "Michael Corleone: From Outsider to Villain",
+      "body": "In Mario Puzo's novel and the film trilogy, Michael Corleone begins as a reluctant outsider trying to escape his family's criminal enterprise. He eventually succeeds his father as don, becoming recognized as one of cinema's most iconic villains.",
+      "evidence": "Michael Corleone is a fictional character and the protagonist of Mario Puzo's 1969 novel The Godfather, as well as the villain protagonist of the movie trilogy it launched."
+    },
+    {
+      "kind": "story",
+      "heading": "He Wanted No Part of It",
+      "body": "Michael initially rejected the family business. He enrolled at Dartmouth College to build a legitimate future. His father, Vito, actually hoped Michael would enter politics, keeping him far away from the criminal world.",
+      "evidence": "Michael initially wants nothing to do with the Corleone \"family business\", and enrolls at Dartmouth College in order to escape any potential involvement in crime."
+    },
+    {
+      "kind": "story",
+      "heading": "The War Hero",
+      "body": "Despite his father's efforts to secure a deferment, Michael enlisted in the Marines after the U.S. entered World War II. He fought in the Pacific, earning the Navy Cross for his bravery in battle.",
+      "evidence": "After the United States' entry into World War II in 1941, he enlists in the Marines and fights in the Pacific, even though his father had expended great effort to wrangle a deferment for him."
+    },
+    {
+      "kind": "story",
+      "heading": "The Hospital Pivot",
+      "body": "Everything changed in 1945 when Vito was shot. Michael found his father unprotected at the hospital. He moved him to a safer room and stood guard, preventing a second assassination attempt by Sollozzo.",
+      "evidence": "Michael visits his father in hospital to be told that NYPD Captain McCluskey has had Vito's bodyguards ejected from the hospital, clearing the way for a second attempt on Vito's life."
+    },
+    {
+      "kind": "story",
+      "heading": "The Point of No Return",
+      "body": "To save his father, Michael proposed a bold hit. He met Sollozzo and the corrupt Captain McCluskey at a Bronx restaurant. He retrieved a planted handgun and killed them both, igniting a decade-long Mafia war.",
+      "evidence": "He retrieves a handgun that Corleone caporegime Peter Clemenza (Richard Castellano) had planted beforehand in the bathroom and kills Sollozzo and McCluskey at point-blank range."
+    },
+    {
+      "kind": "story",
+      "heading": "Exile and Tragedy",
+      "body": "Michael fled to Sicily for two years under Don Tommasino's protection. He married a local woman, Apollonia. She was killed by a car bomb intended for him, proving he could not hide from his enemies.",
+      "evidence": "After Michael is notified of Sonny's murder, he and Apollonia prepare to move to Siracusa, but she is killed by a car bomb meant for Michael, proving the other Mafia families know where he is hiding."
+    },
+    {
+      "kind": "story",
+      "heading": "The Ruthless Successor",
+      "body": "Upon returning to the U.S. in 1950, Michael became the operating head of the family. He orchestrated a complex plot to wipe out his rivals on the same day he stood as godfather to his nephew.",
+      "evidence": "In one stroke, Michael re-establishes the Corleone family as the nation's most powerful crime family and establishes a reputation as being even more cunning and ruthless than his father."
+    },
+    {
+      "kind": "story",
+      "heading": "The Cost of Control",
+      "body": "Michael's rise destroyed his personal life. He ordered the murder of his brother, Fredo, for betraying him. His wife, Kay, left him after he hit her and took custody of their children.",
+      "evidence": "Michael disowns Fredo and tells his assassin Al Neri (Richard Bright) that nothing is to happen to his brother while their mother is alive — the implication being that Neri is to kill Fredo after she dies."
+    },
+    {
+      "kind": "story",
+      "heading": "The Lesson: Power Demands Sacrifice",
+      "body": "Michael's attempt to legitimize the family failed because his past violence kept him tethered to the underworld. Total control required the destruction of his own family, leaving him wealthy but fundamentally alone.",
+      "evidence": "While Michael's many enemies and growing obsession with revenge keep him tethered to the criminal underworld, he still plans to finally legitimize the family by negotiating with Hyman Roth"
+    },
+    {
+      "kind": "cta",
+      "heading": "The Final Verdict",
+      "body": "Michael spent his life chasing legitimacy only to die alone, haunted by the blood he spilled to maintain his position. Power without a moral compass is a trap.\n\nAre you building a life you can actually live with?\n\nSave this. Send it to the guy who needs it.",
+      "evidence": ""
+    }
+  ]
+}

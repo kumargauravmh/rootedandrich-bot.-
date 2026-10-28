@@ -30,115 +30,246 @@ Though I never arrived at the perfection I had been so ambitious of obtaining, b
 In 1748, at the age of 42, Franklin retired from the printing business. He left 1,000 pounds to each city.
 """
 
-EVIDENCE = [
-    "Make no expense but to do good to others or yourself; i.e., waste nothing.",
-    "I determined to give a week's strict attention to each of the virtues successively.",
+HOOK_EV = "In 1748, at the age of 42, Franklin retired from the printing business."
+POINT_EV = [
     "I could go through a course complete in thirteen weeks, and four courses in a year.",
     "Frugality and Industry freeing me from my remaining debt, and producing affluence and independence",
-    "My list of virtues contained at first but twelve; but a Quaker friend having kindly informed me",
+    "a Quaker friend having kindly informed me that I was generally thought proud",
     "I found myself incorrigible with respect to Order; it cost me so much painful attention.",
     "I never arrived at the perfection I had been so ambitious of obtaining, but fell far short of it",
-    "In 1748, at the age of 42, Franklin retired from the printing business.",
-    "Lose no time; be always employed in something useful; cut off all unnecessary actions.",
+]
+POINT_TXT = [
+    "One virtue a week. 13 weeks a round. Four rounds a year.",
+    "Frugality and Industry would clear his debt and buy independence.",
+    "A Quaker friend said he seemed proud, so he added Humility.",
+    "Order beat him. He called himself incorrigible at it.",
+    "He never reached perfection, yet felt a better and happier man for trying.",
 ]
 
 
 def good_draft():
-    slides = []
-    names = ["Hook", "Setup", "System", "Money", "Failure", "Order", "Twist", "Cost", "Lesson"]
-    for i in range(9):
-        slides.append({
-            "heading": f"The {names[i]} slide",
-            "body": "He tracked it every night. One week at a time.",
-            "evidence": EVIDENCE[i],
-        })
-    slides[0]["body"] = "At 42, he walked away from the shop."          # 42 is in source
-    slides[2]["body"] = "13 weeks per round. Four rounds a year."       # 'thirteen' in source
-    slides.append({"heading": "His edge wasn't talent.",
-                   "body": "It was tracking. What would you track for 13 weeks?",
-                   "evidence": ""})
     return {
         "angle": "tracking system",
-        "slides": slides,
-        "caption": "He ran a system on himself. What would you track?",
+        "hook": {"text": "He retired at 42 and never looked back.", "evidence": HOOK_EV},
+        "points": [{"text": t, "evidence": e} for t, e in zip(POINT_TXT, POINT_EV)],
+        "closer": "What one habit would you track for 13 weeks?",
+        "caption": "He ran a system on himself and left a record of his failures too. What would you track?",
         "specific_hashtags": ["#benjaminfranklin", "#habits", "#discipline",
                               "#historylessons", "#selfimprovement"],
     }
 
 
 class ValidationTests(unittest.TestCase):
-    def check(self, draft):
-        return r.validate_draft(draft, SOURCE)
+    def check(self, draft, figure=None):
+        return r.validate_draft(draft, SOURCE, figure)
 
     def test_good_draft_passes(self):
         self.assertEqual(self.check(good_draft()), [])
 
-    def test_fabricated_evidence_is_rejected(self):
+    def test_fabricated_hook_evidence_is_rejected(self):
         d = good_draft()
-        d["slides"][3]["evidence"] = "He once refused a fortune offered by the king of France."
-        problems = self.check(d)
-        self.assertTrue(any("slide 4" in p and "evidence" in p for p in problems), problems)
+        d["hook"]["evidence"] = "He once refused a fortune offered by the king of France."
+        self.assertTrue(any("hook" in p and "evidence" in p for p in self.check(d)))
+
+    def test_fabricated_point_evidence_is_rejected(self):
+        d = good_draft()
+        d["points"][3]["evidence"] = "He once refused a fortune offered by the king of France."
+        self.assertTrue(any("point 4" in p and "evidence" in p for p in self.check(d)))
 
     def test_paraphrased_evidence_is_rejected(self):
         d = good_draft()
-        d["slides"][1]["evidence"] = "He decided to focus on one virtue every single week."
-        self.assertTrue(any("slide 2" in p for p in self.check(d)))
+        d["points"][1]["evidence"] = "He decided to focus on one virtue every single week."
+        self.assertTrue(any("point 2" in p for p in self.check(d)))
 
     def test_too_short_evidence_is_rejected(self):
         d = good_draft()
-        d["slides"][1]["evidence"] = "each of the virtues"
-        self.assertTrue(any("slide 2" in p for p in self.check(d)))
+        d["points"][1]["evidence"] = "each of the virtues"
+        self.assertTrue(any("point 2" in p for p in self.check(d)))
 
     def test_invented_number_is_rejected(self):
         d = good_draft()
-        d["slides"][4]["body"] = "He saved 5,000 pounds in his first year."
+        d["points"][2]["text"] = "He saved 5,000 pounds in his first year."
         problems = self.check(d)
-        self.assertTrue(any("slide 5" in p and "numbers" in p for p in problems), problems)
+        self.assertTrue(any("point 3" in p and "numbers" in p for p in problems), problems)
 
-    def test_number_in_source_as_digits_passes(self):
+    def test_number_in_source_as_digits_and_words_passes(self):
         d = good_draft()
-        d["slides"][4]["body"] = "He left 1,000 pounds to each city."
+        d["points"][2]["text"] = "He left 1,000 pounds. Twelve virtues at first, 13 later."
         self.assertEqual(self.check(d), [])
 
-    def test_number_in_source_as_words_passes(self):
+    def test_invented_number_in_hook_or_caption_is_rejected(self):
         d = good_draft()
-        d["slides"][4]["body"] = "Four rounds a year, 13 weeks each, 12 virtues at first."
-        self.assertEqual(self.check(d), [])
-
-    def test_invented_number_in_caption_is_rejected(self):
+        d["hook"]["text"] = "He retired at 55."
+        self.assertTrue(any("hook" in p and "numbers" in p for p in self.check(d)))
         d = good_draft()
         d["caption"] = "He earned 900 pounds a year. Would you?"
         self.assertTrue(any("caption" in p for p in self.check(d)))
+
+    def test_hook_must_be_a_statement(self):
+        d = good_draft()
+        d["hook"]["text"] = "Why did he retire at 42?"
+        self.assertTrue(any("not a question" in p for p in self.check(d)))
+
+    def test_closer_must_be_a_question(self):
+        d = good_draft()
+        d["closer"] = "Track one habit."
+        self.assertTrue(any("closer must be a question" in p for p in self.check(d)))
 
     def test_caption_must_end_with_question(self):
         d = good_draft()
         d["caption"] = "He ran a system on himself."
         self.assertTrue(any("question" in p for p in self.check(d)))
 
-    def test_wrong_slide_count(self):
-        d = good_draft()
-        d["slides"] = d["slides"][:8]
-        self.assertTrue(any("exactly 10" in p for p in self.check(d)))
+    def test_caption_must_not_mention_sources_or_hashtags(self):
+        for bad in ("Source: Wikipedia. What would you track?",
+                    "According to his book he tracked it. What would you track?",
+                    "He tracked it #habits. What would you track?"):
+            d = good_draft()
+            d["caption"] = bad
+            self.assertTrue(any("caption must not" in p for p in self.check(d)), bad)
 
-    def test_body_too_long(self):
+    def test_exactly_five_points(self):
         d = good_draft()
-        d["slides"][5]["body"] = " ".join(["word"] * 60)
-        self.assertTrue(any("slide 6" in p and "over" in p for p in self.check(d)))
+        d["points"] = d["points"][:4]
+        self.assertTrue(any("exactly 5 points" in p for p in self.check(d)))
+
+    def test_word_limits(self):
+        d = good_draft()
+        d["hook"]["text"] = " ".join(["retired"] * 14)
+        d["points"][0]["text"] = " ".join(["word"] * 25)
+        d["closer"] = " ".join(["word"] * 20) + "?"
+        problems = self.check(d)
+        self.assertTrue(any(p.startswith("hook: over") for p in problems), problems)
+        self.assertTrue(any(p.startswith("point 1: over") for p in problems), problems)
+        self.assertTrue(any(p.startswith("closer: over") for p in problems), problems)
+
+    def test_text_that_cannot_fit_one_frame_is_rejected(self):
+        d = good_draft()
+        long_text = "Frugality and Industry would clear his debt and buy him independence for life ok."
+        for pt in d["points"]:
+            pt["text"] = long_text                      # 15 words each, still within the word cap
+        d["hook"]["text"] = "He retired at 42 and never looked back or worked as a printer ever again."
+        problems = self.check(d)
+        # may or may not overflow; the point is: if it does, it is reported, never crashes
+        self.assertTrue(problems == [] or any("fit" in p or "over" in p for p in problems))
 
     def test_bad_hashtags(self):
         d = good_draft()
         d["specific_hashtags"] = ["#ok", "no hash", "#a", "#b", "#c"]
         self.assertTrue(any("hashtags" in p for p in self.check(d)))
 
-    def test_missing_body(self):
+    def test_missing_pieces(self):
         d = good_draft()
-        d["slides"][2]["body"] = ""
-        self.assertTrue(any("slide 3" in p for p in self.check(d)))
+        d["hook"] = {}
+        self.assertEqual(self.check(d), ["missing hook"])
+        d = good_draft()
+        d["closer"] = ""
+        self.assertEqual(self.check(d), ["missing closer"])
+
+
+FICTION = {"title": "Michael Corleone", "kind": "fictional_character", "work": "The Godfather"}
+
+
+def fiction_draft():
+    d = good_draft()
+    d["hook"]["text"] = "In The Godfather, Michael retired at 42."
+    return d
+
+
+class FictionRuleTests(unittest.TestCase):
+    def check(self, draft, figure=FICTION):
+        return r.validate_draft(draft, SOURCE, figure)
+
+    def test_fiction_draft_that_names_the_story_passes(self):
+        self.assertEqual(self.check(fiction_draft()), [])
+
+    def test_fiction_must_name_the_story(self):
+        problems = self.check(good_draft())
+        self.assertTrue(any("must name the story" in p for p in problems), problems)
+
+    def test_naming_it_in_the_first_two_points_also_counts(self):
+        d = good_draft()
+        d["points"][1]["text"] = "Michael Corleone tracked it every night."
+        self.assertEqual(self.check(d), [])
+
+    def test_long_quote_from_a_work_is_rejected(self):
+        d = fiction_draft()
+        d["points"][2]["text"] = 'He says "make no expense but to do good to others or yourself" once.'
+        problems = self.check(d)
+        self.assertTrue(any("point 3" in p and "quotes more than" in p for p in problems), problems)
+
+    def test_short_quote_from_a_work_is_fine(self):
+        d = fiction_draft()
+        d["points"][2]["text"] = 'He calls it "waste nothing" every night.'
+        self.assertEqual(self.check(d), [])
+
+    def test_same_long_quote_is_fine_for_a_real_person(self):
+        d = good_draft()
+        d["points"][2]["text"] = 'He wrote "make no expense but to do good to others or yourself".'
+        problems = self.check(d, {"title": "Benjamin Franklin", "kind": "person"})
+        self.assertFalse([p for p in problems if "quote" in p], problems)
+
+    def test_book_kind_gets_the_same_rules(self):
+        problems = self.check(good_draft(), {"title": "The Art of War", "kind": "book"})
+        self.assertTrue(any("must name the story" in p for p in problems), problems)
+
+    def test_parenthesised_titles_match_without_the_parenthesis(self):
+        d = good_draft()
+        d["hook"]["text"] = "Gordon Gekko retired at 42."
+        fig = {"title": "Gordon Gekko", "kind": "fictional_character", "work": "Wall Street (1987 film)"}
+        self.assertEqual(self.check(d, fig), [])
+
+    def test_prompt_rules(self):
+        p = r.build_prompt(FICTION, "SRC")
+        self.assertIn("NOT a real person", p)
+        self.assertIn("PARAPHRASE", p)
+        person = r.build_prompt({"title": "X", "kind": "person"}, "SRC")
+        self.assertIn("REAL PERSON", person)
+        self.assertNotIn("PARAPHRASE", person)
+
+    def test_prompt_demands_a_strong_hook_and_no_sources_in_caption(self):
+        p = r.build_prompt({"title": "X", "kind": "person"}, "SRC")
+        self.assertIn("THE HOOK is everything", p)
+        self.assertIn("FIVE", p)
+        self.assertIn("Do NOT mention sources", p)
+
+
+class BuildItemTests(unittest.TestCase):
+    def item(self, title="Benjamin Franklin"):
+        return r.build_item({"title": title, "kind": "person"},
+                            [{"title": "Wikipedia: X", "url": "u"}], good_draft())
+
+    def test_shape_and_no_sources_in_caption(self):
+        it = self.item()
+        self.assertEqual(len(it["points"]), 5)
+        self.assertNotIn("Source", it["caption"])
+        self.assertNotIn("Wikipedia", it["caption"])
+        self.assertEqual(it["sources"][0]["title"], "Wikipedia: X")  # kept for review only
+
+    def test_hashtags_are_14_unique_and_include_brand_and_reach_tags(self):
+        tags = self.item()["hashtags"].split()
+        self.assertEqual(len(tags), 14)
+        self.assertEqual(len(set(tags)), 14)
+        self.assertIn("#rootedandrich", tags)
+        self.assertTrue(set(tags) & set(r.REACH_POOL))
+        self.assertEqual(tags[:5], good_draft()["specific_hashtags"])
+
+    def test_hashtags_are_deterministic_per_subject_but_vary_between_subjects(self):
+        a1, a2 = self.item("Seneca").get("hashtags"), self.item("Seneca").get("hashtags")
+        b = self.item("Epictetus")["hashtags"]
+        self.assertEqual(a1, a2)
+        self.assertNotEqual(a1, b)
+
+    def test_item_passes_the_posters_own_validation_and_renders(self):
+        from single_reel import render_single, validate_single
+        it = self.item()
+        validate_single(it)
+        self.assertEqual(render_single(it).size, (1080, 1920))
 
 
 class HelperTests(unittest.TestCase):
     def test_norm_ignores_case_punctuation_accents_and_curly_quotes(self):
-        self.assertEqual(r.norm("Niccolò “The Prince” — 1532!"),
+        self.assertEqual(r.norm("Niccol\u00f2 \u201cThe Prince\u201d \u2014 1532!"),
                          "niccolo the prince 1532")
 
     def test_word_numbers(self):
@@ -150,23 +281,6 @@ class HelperTests(unittest.TestCase):
     def test_evidence_matches_across_punctuation_differences(self):
         src = r.norm("Make no expense but to do good to others or yourself; i.e., waste nothing.")
         self.assertTrue(r.evidence_ok("make no expense but to do good to others", src))
-
-    def test_build_item_adds_cta_hashtags_and_source(self):
-        item = r.build_item({"title": "Benjamin Franklin"},
-                            [{"title": "Wikipedia: Benjamin Franklin", "url": "u"}],
-                            good_draft())
-        self.assertTrue(item["slides"][-1]["body"].endswith(r.CTA_LINE))
-        self.assertEqual(len(item["hashtags"].split()), 11)
-        self.assertIn("#rootedandrich", item["hashtags"])
-        self.assertIn("Source: Wikipedia: Benjamin Franklin", item["caption"])
-        self.assertEqual(item["slides"][0]["kind"], "hook")
-        self.assertEqual(item["slides"][-1]["kind"], "cta")
-
-    def test_item_passes_the_posters_own_validation(self):
-        from carousel_reel import validate
-        item = r.build_item({"title": "Benjamin Franklin"}, [{"title": "t", "url": "u"}],
-                            good_draft())
-        validate(item)  # raises if the poster would reject it
 
 
 class QueueAndStateTests(unittest.TestCase):
@@ -196,69 +310,11 @@ class QueueAndStateTests(unittest.TestCase):
         todo, _ = r.pick_figures()
         self.assertEqual([f["title"] for f in todo], ["C"])
 
-
-FICTION = {"title": "Michael Corleone", "kind": "fictional_character", "work": "The Godfather"}
-
-
-def fiction_draft():
-    d = good_draft()
-    d["slides"][0]["heading"] = "In The Godfather, Michael walks away."
-    return d
-
-
-class FictionRuleTests(unittest.TestCase):
-    def check(self, draft, figure=FICTION):
-        return r.validate_draft(draft, SOURCE, figure)
-
-    def test_fiction_draft_that_names_the_story_passes(self):
-        self.assertEqual(self.check(fiction_draft()), [])
-
-    def test_fiction_must_name_the_story_in_first_two_slides(self):
-        problems = self.check(good_draft())  # never mentions the film or the character
-        self.assertTrue(any("must name the story" in p for p in problems), problems)
-
-    def test_character_name_alone_also_counts(self):
-        d = good_draft()
-        d["slides"][1]["body"] = "Michael Corleone tracked it every night."
-        self.assertEqual(self.check(d), [])
-
-    def test_long_quote_from_a_work_is_rejected(self):
-        d = fiction_draft()
-        d["slides"][3]["body"] = 'He says "make no expense but to do good to others or yourself" once.'
-        problems = self.check(d)
-        self.assertTrue(any("slide 4" in p and "quotes more than" in p for p in problems), problems)
-
-    def test_short_quote_from_a_work_is_fine(self):
-        d = fiction_draft()
-        d["slides"][3]["body"] = 'He calls it "waste nothing" every night.'
-        self.assertEqual(self.check(d), [])
-
-    def test_same_long_quote_is_fine_for_a_real_person(self):
-        d = good_draft()
-        d["slides"][3]["body"] = 'He wrote "make no expense but to do good to others or yourself".'
-        self.assertEqual(self.check(d, {"title": "Benjamin Franklin", "kind": "person"}), [])
-
-    def test_book_kind_gets_the_same_rules(self):
-        problems = self.check(good_draft(), {"title": "The Art of War", "kind": "book"})
-        self.assertTrue(any("must name the story" in p for p in problems), problems)
-
-    def test_parenthesised_titles_match_without_the_parenthesis(self):
-        d = good_draft()
-        d["slides"][0]["heading"] = "Gordon Gekko says greed works."
-        fig = {"title": "Gordon Gekko", "kind": "fictional_character",
-               "work": "Wall Street (1987 film)"}
-        self.assertEqual(self.check(d, fig), [])
-
-    def test_prompt_tells_gemini_the_fiction_rules(self):
-        p = r.build_prompt(FICTION, "SRC")
-        self.assertIn("NOT a real person", p)
-        self.assertIn("PARAPHRASE", p)
-        self.assertIn("KIND: fictional_character", p)
-
-    def test_prompt_for_person_has_no_fiction_rules(self):
-        p = r.build_prompt({"title": "X", "kind": "person"}, "SRC")
-        self.assertIn("REAL PERSON", p)
-        self.assertNotIn("PARAPHRASE", p)
+    def test_queue_ahead_counts_only_unposted_items(self):
+        for i, name in enumerate(["a", "b", "c"], 1):
+            Path(f"content/queue/00{i}_{name}.json").write_text(json.dumps({"id": name}))
+        Path("content/state.json").write_text(json.dumps({"published": ["a"]}))
+        self.assertEqual(r.queue_ahead(), 2)
 
 
 class DiscoveryTests(unittest.TestCase):

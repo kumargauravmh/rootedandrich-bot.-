@@ -1,11 +1,12 @@
-name: Rooted and Rich - Weekly Carousel Post
+name: Rooted and Rich - Reel Post (5 a week)
 
 on:
   schedule:
-    # All times UTC. IST = UTC + 5:30. Days: 0=Sun 2=Tue 4=Thu
-    - cron: '30 14 * * 2'   # Tuesday  8:00 PM IST
-    - cron: '30 14 * * 4'   # Thursday 8:00 PM IST
-    - cron: '30 14 * * 0'   # Sunday   8:00 PM IST
+    # GitHub runs cron jobs HOURS late, so we trigger EARLY (two tries) and the job
+    # itself waits until exactly 8:00 PM IST before publishing.
+    # Days (UTC): 6=Sat 0=Sun 1=Mon 3=Wed 5=Fri
+    - cron: '30 6 * * 6,0,1,3,5'    # 12:00 PM IST
+    - cron: '30 10 * * 6,0,1,3,5'   # 4:00 PM IST
   workflow_dispatch:
     inputs:
       dry_run:
@@ -16,19 +17,31 @@ on:
 permissions:
   contents: write
 
-env:
-  # carousel = swipeable picture post (default). reel = silent video of the same slides.
-  POST_FORMAT: carousel
-
-# Never let two runs overlap (a manual run during a scheduled one, etc.).
-# Shares a lane with the research workflow so their git pushes never collide.
+# One post lane: a second trigger queues behind the first, then the gate sees
+# "already posted today" and skips.
 concurrency:
-  group: repo-writes
+  group: post-lane
   cancel-in-progress: false
 
 jobs:
-  post:
+  gate:
     runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.gate.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Should this run post?
+        id: gate
+        run: python scripts/slot.py gate
+
+  post:
+    needs: gate
+    if: ${{ needs.gate.outputs.proceed == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -45,33 +58,27 @@ jobs:
         run: pip install pillow requests
 
       # Takes the next unpublished item from content/queue/. If the queue is
-      # empty this step FAILS on purpose (you get a GitHub email) instead of
-      # posting something old.
-      - name: Build slides + caption from the content queue
+      # empty this step FAILS on purpose (you get a GitHub email).
+      - name: Build the one-frame reel
         id: build
-        run: python scripts/carousel_reel.py
+        run: python scripts/single_reel.py
 
-      # Dry run: attach ONLY what this run just built (slides or video + caption)
-      - name: Collect this run's post (dry run only)
+      - name: Collect this run's reel (dry run only)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         run: |
           mkdir dryrun_out
           SLUG=$(cat posts/latest.txt)
-          if [ "$(cat posts/latest_format.txt)" = "carousel" ]; then
-            cp posts/carousel_$SLUG/slide_*.jpg dryrun_out/
-          else
-            cp posts/reel_$SLUG.mp4 dryrun_out/
-          fi
+          cp posts/reel_$SLUG.mp4 dryrun_out/
           cp posts/caption_$SLUG.txt dryrun_out/
+          cp reel_build/frame.png dryrun_out/
           ls -la dryrun_out
-          echo "### Format: $(cat posts/latest_format.txt)" >> $GITHUB_STEP_SUMMARY
           echo "### Caption that would be posted" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat posts/caption_$SLUG.txt >> $GITHUB_STEP_SUMMARY
           echo >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
 
-      - name: Attach slides (dry run only)
+      - name: Attach reel (dry run only)
         if: ${{ github.event.inputs.dry_run == 'true' }}
         uses: actions/upload-artifact@v4
         with:
@@ -79,8 +86,7 @@ jobs:
           path: dryrun_out/
           retention-days: 7
 
-      # Posts nothing. Fails the run early, with a readable reason, if the
-      # Instagram token is expired. Runs on dry runs too, so you can test it.
+      # Fails early, with a readable reason, if a token is expired. Runs on dry runs too.
       - name: Check Instagram token
         env:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
@@ -89,13 +95,19 @@ jobs:
           MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
         run: python scripts/post_reel.py --check-token
 
-      - name: Commit and push generated post
+      # Everything is built and checked. Now sleep until exactly 8:00 PM IST.
+      - name: Wait for 8:00 PM IST
+        if: ${{ github.event_name == 'schedule' }}
+        run: python scripts/slot.py wait
+
+      - name: Commit and push generated post record
         if: ${{ steps.build.outputs.generated == 'true' && github.event.inputs.dry_run != 'true' }}
         run: |
           git config user.name "rootedandrich-bot"
           git config user.email "rootedandrich-bot@users.noreply.github.com"
           git add posts/latest.txt posts/latest_item.txt posts/latest_format.txt posts/caption_*.txt
           git commit -m "Post $(cat posts/latest.txt)" || echo "Nothing to commit"
+          git pull --rebase
           git push
 
       - name: Publish to Instagram
@@ -105,16 +117,17 @@ jobs:
           IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
           MEDIA_REPO: ${{ secrets.MEDIA_REPO }}
           MEDIA_REPO_TOKEN: ${{ secrets.MEDIA_REPO_TOKEN }}
-        run: python scripts/post_carousel.py
+        run: python scripts/post_reel.py
 
-      # Only after a successful publish: mark the queue item as used so it
-      # is never posted twice.
+      # Only after a successful publish: mark the item used and record today's
+      # IST date so a second trigger cannot post again.
       - name: Mark queue item as published
         if: ${{ steps.build.outputs.generated == 'true' && github.event.inputs.dry_run != 'true' }}
         run: |
-          python scripts/carousel_reel.py --mark-published
+          python scripts/single_reel.py --mark-published
           git config user.name "rootedandrich-bot"
           git config user.email "rootedandrich-bot@users.noreply.github.com"
           git add content/state.json
           git commit -m "Mark $(cat posts/latest_item.txt) as published" || echo "Nothing to commit"
+          git pull --rebase
           git push

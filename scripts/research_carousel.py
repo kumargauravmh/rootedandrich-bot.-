@@ -2,7 +2,7 @@
 research_carousel.py
 ---------------------
 Researches the next subject in content/topics.json and writes a ready-to-post
-carousel into content/queue/ (the folder carousel_reel.py posts from).
+one-frame reel into content/queue/ (the folder single_reel.py posts from).
 
 A "subject" can be a real person, a fictional character, a book, a film or a
 TV/anime/cartoon series. Anything with a genuine lesson about money,
@@ -49,7 +49,9 @@ from urllib.parse import quote
 
 import requests
 
-from carousel_reel import QUEUE_DIR, render_slide, validate  # same folder
+import random
+
+from single_reel import QUEUE_DIR, load_state, render_single, validate_single  # same folder
 
 TOPICS_FILE = Path("content/topics.json")
 STATE_FILE = Path("content/research_state.json")
@@ -67,14 +69,22 @@ LOW_WATER = 6            # discover new subjects when fewer than this many remai
 DISCOVER_COUNT = 14      # how many candidates to ask Gemini for
 MIN_ARTICLE_CHARS = 4000  # a candidate needs a substantial Wikipedia article
 
-N_SLIDES = 10
+N_POINTS = 5
 MIN_EVIDENCE_WORDS = 6   # keep in sync with the "6-30 words" instruction in the prompt
-MAX_HEADING_WORDS = 12
-MAX_BODY_WORDS = 48
+MAX_HOOK_WORDS = 12
+MAX_POINT_WORDS = 18
+MAX_CLOSER_WORDS = 14
 MAX_QUOTE_WORDS_WORKS = 6  # longest quote allowed from a book/film/series
-CTA_LINE = "Save this. Send it to the guy who needs it."
+QUEUE_AHEAD = 3            # keep this many unposted carousels queued, no more
 
-BROAD_HASHTAGS = "#motivation #mindset #wealth #faith #entrepreneur"
+# Instagram does not expose live trending hashtags to any program, so these are
+# high-volume tags in the niche, rotated per post (deterministically) for variety.
+BROAD_POOL = ["#motivation", "#mindset", "#success", "#discipline", "#wealth", "#money",
+              "#entrepreneur", "#selfimprovement", "#stoicism", "#millionairemindset",
+              "#personalgrowth", "#wisdom", "#lifelessons", "#growthmindset",
+              "#financialfreedom", "#businessmindset", "#inspiration", "#dailymotivation",
+              "#history", "#hustle"]
+REACH_POOL = ["#reels", "#reelsinstagram", "#viralreels", "#explorepage", "#fyp", "#trending"]
 
 KINDS = {
     "person": "a real historical person",
@@ -254,6 +264,11 @@ def long_quotes(text, max_words):
     return [q for q in found if len(q.split()) > max_words]
 
 
+def draft_texts(data):
+    """Every piece of on-screen text, in reading order."""
+    return ([data["hook"]["text"]] + [p["text"] for p in data["points"]] + [data["closer"]])
+
+
 def validate_draft(data, source_text, figure=None):
     """Returns a list of problems. Empty list = the draft is acceptable."""
     problems = []
@@ -262,48 +277,66 @@ def validate_draft(data, source_text, figure=None):
     source_flat = re.sub(r"(?<=\d),(?=\d)", "", source_text)
     source_words = word_numbers(source_text)
 
-    slides = data.get("slides")
-    if not isinstance(slides, list) or len(slides) != N_SLIDES:
-        return [f"need exactly {N_SLIDES} slides, got "
-                f"{len(slides) if isinstance(slides, list) else 'none'}"]
+    hook = data.get("hook") or {}
+    points = data.get("points")
+    closer = (data.get("closer") or "").strip()
+    if not isinstance(hook, dict) or not (hook.get("text") or "").strip():
+        return ["missing hook"]
+    if not isinstance(points, list) or len(points) != N_POINTS:
+        return [f"need exactly {N_POINTS} points, got "
+                f"{len(points) if isinstance(points, list) else 'none'}"]
+    if not all(isinstance(p, dict) and (p.get("text") or "").strip() for p in points):
+        return ["every point needs text"]
+    if not closer:
+        return ["missing closer"]
 
-    for i, s in enumerate(slides, start=1):
-        heading = (s.get("heading") or "").strip()
-        body = (s.get("body") or "").strip()
-        evidence = (s.get("evidence") or "").strip()
-        is_last = i == N_SLIDES
+    # (label, text, evidence, word limit)
+    parts = [("hook", hook["text"].strip(), (hook.get("evidence") or "").strip(), MAX_HOOK_WORDS)]
+    for i, p in enumerate(points, 1):
+        parts.append((f"point {i}", p["text"].strip(), (p.get("evidence") or "").strip(),
+                      MAX_POINT_WORDS))
 
-        if not heading or not body:
-            problems.append(f"slide {i}: missing heading or body")
-            continue
-        if len(heading.split()) > MAX_HEADING_WORDS:
-            problems.append(f"slide {i}: heading over {MAX_HEADING_WORDS} words")
-        if len(body.split()) > MAX_BODY_WORDS:
-            problems.append(f"slide {i}: body over {MAX_BODY_WORDS} words "
-                            f"({len(body.split())})")
-
-        if not is_last:
-            if not evidence_ok(evidence, source_norm):
-                problems.append(f"slide {i}: evidence is not a word-for-word excerpt "
-                                f"of the source: '{evidence[:80]}'")
-        bad = numbers_ok(heading + " " + body, source_flat, source_words)
+    for label, text, evidence, limit in parts:
+        if len(text.split()) > limit:
+            problems.append(f"{label}: over {limit} words ({len(text.split())})")
+        if not evidence_ok(evidence, source_norm):
+            problems.append(f"{label}: evidence is not a word-for-word excerpt of the "
+                            f"source: '{evidence[:80]}'")
+        bad = numbers_ok(text, source_flat, source_words)
         if bad:
-            problems.append(f"slide {i}: numbers not found in source: {bad}")
-
+            problems.append(f"{label}: numbers not found in source: {bad}")
         if kind in WORK_KINDS:
-            for q in long_quotes(heading + " " + body, MAX_QUOTE_WORDS_WORKS):
-                problems.append(f"slide {i}: quotes more than {MAX_QUOTE_WORDS_WORKS} words "
-                                f"from the work; paraphrase instead: '{q[:60]}'")
+            for q in long_quotes(text, MAX_QUOTE_WORDS_WORKS):
+                problems.append(f"{label}: quotes more than {MAX_QUOTE_WORDS_WORKS} words from "
+                                f"the work; paraphrase instead: '{q[:60]}'")
+
+    if hook["text"].strip().endswith("?"):
+        problems.append("hook must be a bold statement of fact, not a question")
+
+    if len(closer.split()) > MAX_CLOSER_WORDS:
+        problems.append(f"closer: over {MAX_CLOSER_WORDS} words")
+    if not closer.endswith("?"):
+        problems.append("closer must be a question to the reader")
+    bad = numbers_ok(closer, source_flat, source_words)
+    if bad:
+        problems.append(f"closer: numbers not found in source: {bad}")
 
     caption = (data.get("caption") or "").strip()
     if not caption:
         problems.append("caption missing")
-    elif "?" not in caption[-140:]:
-        problems.append("caption must end with a question to the reader")
     else:
+        if "?" not in caption[-140:]:
+            problems.append("caption must end with a question to the reader")
+        if re.search(r"\b(wikipedia|sources?|according to)\b", caption, re.I):
+            problems.append("caption must not mention sources or Wikipedia")
+        if "#" in caption:
+            problems.append("caption must not contain hashtags (they are added separately)")
         bad = numbers_ok(caption, source_flat, source_words)
         if bad:
             problems.append(f"caption: numbers not found in source: {bad}")
+        if kind in WORK_KINDS:
+            for q in long_quotes(caption, MAX_QUOTE_WORDS_WORKS):
+                problems.append(f"caption: long quote from the work; paraphrase: '{q[:60]}'")
 
     tags = data.get("specific_hashtags") or []
     if len(tags) != 5 or not all(re.fullmatch(r"#[a-z0-9]{3,30}", t) for t in tags):
@@ -311,26 +344,22 @@ def validate_draft(data, source_text, figure=None):
 
     # Stories must be named up front so nobody mistakes fiction for history.
     if kind in WORK_KINDS and figure:
-        opening = norm(" ".join((slides[0].get("heading", ""), slides[0].get("body", ""),
-                                 slides[1].get("heading", ""), slides[1].get("body", ""))))
+        opening = norm(" ".join([hook["text"], points[0]["text"], points[1]["text"]]))
         names = [strip_parens(figure["title"])]
         if figure.get("work"):
             names.append(strip_parens(figure["work"]))
         if not any(norm(n) and norm(n) in opening for n in names):
-            problems.append("slides 1-2 must name the story/work "
+            problems.append("the hook or first two points must name the story/work "
                             f"({' or '.join(names)}) so readers know it is not real history")
 
     if not problems:  # only render-test once the text itself is clean
-        for i, s in enumerate(slides, start=1):
-            body = s["body"].strip()
-            if i == N_SLIDES and CTA_LINE not in body:
-                body = f"{body}\n\n{CTA_LINE}"  # same thing build_item will do
-            slide = {"heading": s["heading"].strip(), "body": body,
-                     "kind": "hook" if i == 1 else "cta" if i == N_SLIDES else None}
-            try:
-                render_slide(slide, i, N_SLIDES)
-            except ValueError as e:
-                problems.append(str(e))
+        try:
+            render_single({"id": "fit-test", "caption": "x", "hashtags": "#x",
+                           "hook": hook["text"].strip(),
+                           "points": [p["text"].strip() for p in points],
+                           "closer": closer})
+        except ValueError as e:
+            problems.append(str(e))
     return problems
 
 
@@ -346,21 +375,22 @@ def kind_rules(figure):
     nonfiction = ("If the work is non-fiction, attribute every claim to the author "
                   "('the author argues...') and do not present the author's claims as proven fact. ")
     return (f"This subject is {label}. It is NOT a real person's life story.\n"
-            "   - Name the story or book in slide 1 or slide 2 (for example 'In The Godfather...').\n"
+            "   - Name the story or book in the hook or the first two points (for example 'In The Godfather...').\n"
             "   - Frame every plot point as what happens IN the story, or what the creators, "
             "author or critics say. Never present fiction as real history.\n"
             f"   - {nonfiction}\n"
             f"   - The work is under copyright: PARAPHRASE. Do not quote dialogue, lines or "
             f"passages from it (max {MAX_QUOTE_WORDS_WORKS} words in quotation marks, only if the "
             "SOURCE contains them).\n"
-            "   - Slide 9 draws the real-life lesson, clearly labelled as the lesson for the reader.")
+            "   - The last point draws the real-life lesson, clearly labelled as the lesson for the reader.")
 
 
 def build_prompt(figure, source_text, feedback=None):
-    prompt = f"""You write Instagram carousels for @rootedand.rich, an account for men aged \
-18-34 in India and the US who care about money, discipline, power and faith. Voice: direct, \
-blunt, talks TO the reader as "you", short sentences, zero fluff, no motivational-poster \
-language. Specific beats abstract every time.
+    prompt = f"""You write ONE-FRAME Instagram Reels for @rootedand.rich, an account for men aged \
+18-34 in India and the US who care about money, discipline, power and faith. The reel is a single \
+still image with text: a hook, five points, and a closing question. No voiceover, no slides. \
+Everything must be readable in about 15 seconds. Voice: direct, blunt, talks TO the reader as \
+"you" where natural, short sentences, plain words, zero fluff, no motivational-poster language.
 
 SUBJECT: {figure['title']}
 KIND: {figure.get('kind', 'person')}
@@ -370,31 +400,46 @@ LANE: {figure.get('lane', 'money, discipline, power')}
 HARD RULES (a script will check these and reject the draft if broken):
 1. Use ONLY facts stated in the SOURCE text below. Never add anything from your own memory, \
 not even things you are sure of. If the source doesn't say it, it doesn't go in.
-2. Every slide except the last needs an "evidence" field: a WORD-FOR-WORD excerpt (6-30 words) \
-copied exactly from the SOURCE that supports the slide's main fact. Do not paraphrase it. \
-Do not stitch two passages together.
-3. Every number, year, amount or percentage on a slide must appear in the SOURCE.
+2. The hook and every point need an "evidence" field: a WORD-FOR-WORD excerpt (6-30 words) \
+copied exactly from the SOURCE that supports it. Do not paraphrase it. Do not stitch two \
+passages together.
+3. Every number, year, amount or percentage you write must appear in the SOURCE.
 4. If the source hedges a claim (legend, "reportedly", "according to tradition", disputed), \
 skip it or clearly say it is disputed.
-5. Heading: max {MAX_HEADING_WORDS} words. Body: max {MAX_BODY_WORDS} words. Use \\n for line breaks.
+5. Length limits: hook max {MAX_HOOK_WORDS} words, each point max {MAX_POINT_WORDS} words, \
+closer max {MAX_CLOSER_WORDS} words. The whole frame must fit on one screen, so be ruthless: \
+keep only the FIVE most valuable facts out of everything in the source.
 6. {kind_rules(figure)}
 
-STRUCTURE ({N_SLIDES} slides):
-- Slide 1: scroll-stopping hook. One surprising, specific fact stated as a bold claim.
-- Slides 2-8: the story and the lesser-known specifics. One idea per slide. Prefer what most \
-people DON'T know over what everyone knows. Include at least one failure, cost, or surprising \
-detail, not just wins.
-- Slide 9: what this means for the reader's money, discipline or power, grounded in the facts above.
-- Slide 10: a closing line, then a genuine question to the reader, then the exact sentence: \
-"{CTA_LINE}" (slide 10 evidence can be an empty string).
+THE HOOK is everything. It decides whether anyone reads the rest. One sentence, a bold STATEMENT \
+(never a question, never a title, never "The story of..."). It must contain one concrete, \
+surprising, source-backed fact that creates a gap the viewer needs closed. Strong patterns:
+   - an unexpected number or age: "[Who] did [surprising thing] at [number]."
+   - a reversal: "[Who] had [everything], then [lost/gave it] because [specific reason]."
+   - a hidden cost or paradox: "[Who] won by doing the thing everyone says to avoid."
+   - a contradiction with common belief, only if the source supports it.
+No clickbait the source cannot back up. Make it specific enough that it could only be about this subject.
 
-CAPTION: 2-3 sentences, same voice, must end with a question to the reader.
+THE FIVE POINTS: the most valuable, lesser-known facts, ordered as a mini-story with a turn. \
+One fact per point. Prefer what most people DON'T know. Include at least one failure, cost or \
+surprising detail, not only wins. Point 5 is the lesson for the reader's money, discipline, \
+power or faith, grounded in the facts above.
+
+THE CLOSER: one sharp question to the reader.
+
+CAPTION: 2-3 sentences in the same voice that add ONE extra insight not already on the image, \
+ending with a question. Do NOT mention sources, Wikipedia, or "according to". Do NOT include \
+hashtags or emojis.
 HASHTAGS: exactly 5 lowercase topic hashtags specific to this subject and theme \
 (like #stoicism, #peakyblinders). Do not include #rootedandrich.
 
 Return ONLY this JSON, no markdown fences:
 {{"angle": "one line on the angle you chose",
- "slides": [{{"heading": "...", "body": "...", "evidence": "..."}}],
+ "hook": {{"text": "...", "evidence": "..."}},
+ "points": [{{"text": "...", "evidence": "..."}}, {{"text": "...", "evidence": "..."}},
+            {{"text": "...", "evidence": "..."}}, {{"text": "...", "evidence": "..."}},
+            {{"text": "...", "evidence": "..."}}],
+ "closer": "...",
  "caption": "...",
  "specific_hashtags": ["#a", "#b", "#c", "#d", "#e"]}}
 
@@ -541,46 +586,47 @@ def next_queue_number():
     return (max(nums) if nums else 0) + 1
 
 
+def pick_hashtags(item_id, specific):
+    """5 specific + 5 broad + 3 reach tags, rotated per post, + the brand tag."""
+    rng = random.Random(item_id)
+    broad = [t for t in BROAD_POOL if t not in specific]
+    reach = list(REACH_POOL)
+    return list(specific) + rng.sample(broad, 5) + rng.sample(reach, 3) + ["#rootedandrich"]
+
+
 def build_item(figure, sources, data):
-    slides = []
-    for i, s in enumerate(data["slides"], start=1):
-        body = s["body"].strip()
-        if i == N_SLIDES and CTA_LINE not in body:
-            body = f"{body}\n\n{CTA_LINE}"
-        slides.append({
-            "kind": "hook" if i == 1 else "cta" if i == N_SLIDES else "story",
-            "heading": s["heading"].strip(),
-            "body": body,
-            "evidence": (s.get("evidence") or "").strip(),
-        })
-    src_line = "Source: " + "; ".join(x["title"] for x in sources[:2])
-    hashtags = " ".join(data["specific_hashtags"]) + " #rootedandrich " + BROAD_HASHTAGS
+    item_id = slugify(figure["title"])
     return {
-        "id": slugify(figure["title"]),
+        "id": item_id,
         "figure": figure["title"],
         "kind": figure.get("kind", "person"),
         "angle": data.get("angle", ""),
-        "caption": f"{data['caption'].strip()}\n\n{src_line}",
-        "hashtags": hashtags,
-        "sources": sources,
-        "slides": slides,
+        "hook": data["hook"]["text"].strip(),
+        "points": [p["text"].strip() for p in data["points"]],
+        "closer": data["closer"].strip(),
+        "evidence": {"hook": (data["hook"].get("evidence") or "").strip(),
+                     "points": [(p.get("evidence") or "").strip() for p in data["points"]]},
+        "caption": data["caption"].strip(),   # no sources in the caption, by design
+        "hashtags": " ".join(pick_hashtags(item_id, data["specific_hashtags"])),
+        "sources": sources,                    # kept for YOUR review only
     }
 
 
 def write_review(item, filename=None):
     where = (f"is queued as `content/queue/{filename}` and will post in queue order "
-             f"(Tue / Thu / Sun, 8 PM IST)." if filename else
+             f"(Sat / Sun / Mon / Wed / Fri, 8 PM IST)." if filename else
              "was drafted as a DRY RUN. Nothing was queued or saved.")
     lines = [f"## {item['figure']} ({item['kind']})", "", f"This {where}", ""]
     if filename:
         lines += ["**To cancel or edit it:** open that file on GitHub and delete or edit it "
                   "before it posts. Doing nothing = it posts as-is.", ""]
-    lines += [f"Angle: {item['angle']}", "", "### Slides"]
-    for i, s in enumerate(item["slides"], 1):
-        lines += [f"**{i}. {s['heading']}**", s["body"].replace("\n", "  \n"), ""]
-        if s["evidence"]:
-            lines += [f"> evidence: {s['evidence']}", ""]
-    lines += ["### Caption", item["caption"], "", item["hashtags"], "", "### Sources"]
+    ev = item["evidence"]
+    lines += [f"Angle: {item['angle']}", "", "### On the reel",
+              f"**HOOK:** {item['hook']}", f"> evidence: {ev['hook']}", ""]
+    for i, (pt, e) in enumerate(zip(item["points"], ev["points"]), 1):
+        lines += [f"**{i}.** {pt}", f"> evidence: {e}", ""]
+    lines += [f"**CLOSER:** {item['closer']}", "", "### Caption", item["caption"], "",
+              item["hashtags"], "", "### Sources (not shown to viewers)"]
     lines += [f"- {x['title']}: {x['url']}" for x in item["sources"]]
     REVIEW_FILE.write_text("\n".join(lines), encoding="utf-8")
     REVIEW_TITLE_FILE.write_text(f"Queued: {item['figure']}", encoding="utf-8")
@@ -604,11 +650,22 @@ def research_figure(figure):
         problems = validate_draft(data, source_text, figure)
         if not problems:
             item = build_item(figure, sources, data)
-            validate(item)  # same checks the poster applies
+            validate_single(item)  # same checks the poster applies
             return item, []
         print("  rejected:\n   - " + "\n   - ".join(problems))
         feedback = problems
     return None, feedback or []
+
+
+def queue_ahead():
+    """How many carousels are queued but not yet posted."""
+    published = set(load_state().get("published", []))
+    n = 0
+    for path in QUEUE_DIR.glob("*.json"):
+        item = json.loads(path.read_text(encoding="utf-8"))
+        if item.get("id") not in published:
+            n += 1
+    return n
 
 
 def top_up_topics(dry_run):
@@ -648,6 +705,15 @@ def main():
                                    encoding="utf-8")
         print(f"{'Would add' if dry_run else 'Added'} {len(new)} new subjects.")
         return
+
+    # Self-regulating: this runs every day, but only adds one when the queue is running low.
+    # (If GitHub skips a day, the queue still has a cushion.) Manual runs and dry runs skip this.
+    if not forced and not dry_run and os.environ.get("GITHUB_EVENT_NAME") == "schedule":
+        ahead = queue_ahead()
+        if ahead >= QUEUE_AHEAD:
+            print(f"Queue already holds {ahead} unposted reels (cushion is {QUEUE_AHEAD}). "
+                  f"Nothing to do today.")
+            return
 
     if not forced:
         top_up_topics(dry_run)

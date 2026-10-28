@@ -1,13 +1,13 @@
-name: Rooted and Rich - Research Next Carousel
+name: Rooted and Rich - Research Next Reel
 
 on:
   schedule:
-    # UTC. 04:30 UTC = 10:00 AM IST. One new carousel per run, 3 runs a week,
-    # matching the 3 posts a week, so the queue stays about 2 posts ahead of
-    # posting. That gap is your window to cancel or edit a queued post.
-    - cron: '30 4 * * 1'   # Monday
-    - cron: '30 4 * * 3'   # Wednesday
-    - cron: '30 4 * * 6'   # Saturday
+    # UTC. Two tries a day (10:00 AM and 10:00 PM IST) in case GitHub skips one.
+    # Each run researches ONE subject, and does nothing if 3 reels are already
+    # queued, so the queue stays ~3 posts ahead. That gap is your window to
+    # cancel or edit a queued post.
+    - cron: '30 4 * * *'
+    - cron: '30 16 * * *'
   workflow_dispatch:
     inputs:
       dry_run:
@@ -19,9 +19,8 @@ permissions:
   contents: write
   issues: write
 
-# Shares one lane with the posting workflow so they never push at the same time
 concurrency:
-  group: repo-writes
+  group: research-lane
   cancel-in-progress: false
 
 jobs:
@@ -61,8 +60,8 @@ jobs:
           if [ -f review_issue.md ]; then cat review_issue.md >> $GITHUB_STEP_SUMMARY; \
           else echo "No draft was produced. Open the 'Research next figure' step for the reason." >> $GITHUB_STEP_SUMMARY; fi
 
-      - name: Commit queued carousel
-        if: ${{ github.event.inputs.dry_run != 'true' }}
+      - name: Commit queued reel
+        if: ${{ github.event.inputs.dry_run != 'true' && hashFiles('review_title.txt') != '' }}
         run: |
           git config user.name "rootedandrich-bot"
           git config user.email "rootedandrich-bot@users.noreply.github.com"
@@ -71,10 +70,10 @@ jobs:
           git pull --rebase
           git push
 
-      # Opens a GitHub issue (GitHub emails you) with the full slides, the
+      # Opens a GitHub issue (GitHub emails you) with the full hook and points, the
       # word-for-word evidence behind each one, and the sources.
       - name: Open review issue
-        if: ${{ github.event.inputs.dry_run != 'true' }}
+        if: ${{ github.event.inputs.dry_run != 'true' && hashFiles('review_issue.md') != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh issue create --title "$(cat review_title.txt)" --body-file review_issue.md

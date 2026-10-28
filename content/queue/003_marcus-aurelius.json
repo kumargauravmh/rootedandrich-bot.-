@@ -1,0 +1,76 @@
+{
+  "id": "marcus-aurelius",
+  "figure": "Marcus Aurelius",
+  "kind": "person",
+  "angle": "The reality of Marcus Aurelius: a life defined by constant war, plague, and duty, not just philosophy.",
+  "caption": "Marcus Aurelius wasn't just a quote on a screen. He was a man who lived through chaos and kept his head. Are you built to handle pressure like that?\n\nSource: Wikipedia: Marcus Aurelius",
+  "hashtags": "#stoicism #marcusaurelius #leadership #discipline #history #rootedandrich #motivation #mindset #wealth #faith #entrepreneur",
+  "sources": [
+    {
+      "title": "Wikipedia: Marcus Aurelius",
+      "url": "https://en.wikipedia.org/wiki/Marcus_Aurelius"
+    }
+  ],
+  "slides": [
+    {
+      "kind": "hook",
+      "heading": "The Philosopher King was a war-torn survivor",
+      "body": "Forget the marble statue. Marcus Aurelius spent his reign fighting Germanic tribes, managing a massive plague, and dealing with a failing economy. He wasn't just a thinker; he was a man forced to hold a crumbling empire together.",
+      "evidence": "Under the reign of Marcus Aurelius, the Roman Empire witnessed much military conflict."
+    },
+    {
+      "kind": "story",
+      "heading": "He lost 5 to 10 million people to plague",
+      "body": "In 165 or 166, the Antonine Plague hit the Roman Empire. It killed between five and ten million people. It devastated the population and potentially claimed the life of his co-emperor, Lucius Verus.",
+      "evidence": "The Antonine Plague broke out in 165 or 166 and devastated the population of the Roman Empire, causing the deaths of five to ten million people."
+    },
+    {
+      "kind": "story",
+      "heading": "He was born into extreme wealth",
+      "body": "Marcus wasn't a self-made man. His mother inherited a massive fortune, including profitable brickworks during a Roman construction boom. He was raised in a luxury villa on the Caelian Hill.",
+      "evidence": "Her inheritance included large brickworks on the outskirts of Rome – a profitable enterprise in an era when the city was experiencing a construction boom"
+    },
+    {
+      "kind": "story",
+      "heading": "He was a boxer and wrestler",
+      "body": "Before he was an emperor, Marcus was an athlete. He trained in wrestling and boxing throughout his youth and teenage years. He even learned to fight in armor.",
+      "evidence": "From a young age, Marcus displayed enthusiasm for wrestling and boxing. He trained in wrestling as a youth and into his teenage years, learned to fight in armour"
+    },
+    {
+      "kind": "story",
+      "heading": "He was forced into court life",
+      "body": "Marcus hated the \"pomp of the court.\" He wanted a quiet, philosophical life. Instead, his adoptive father Antoninus Pius forced him to live in the imperial palace and take up the habits of his station.",
+      "evidence": "Antoninus demanded that Marcus reside in the House of Tiberius, the imperial palace on the Palatine, and take up the habits of his new station"
+    },
+    {
+      "kind": "story",
+      "heading": "He suffered from constant illness",
+      "body": "Marcus was never a strong man. He dealt with chronic pain, including chest pain and ulcers. He often had to take treatment and manage his health just to function in his duties.",
+      "evidence": "Never particularly healthy or strong, Marcus was praised by Cassius Dio, writing of his later years, for behaving dutifully in spite of his various illnesses."
+    },
+    {
+      "kind": "story",
+      "heading": "He devalued the currency",
+      "body": "Power costs money. When faced with military crises, Marcus reduced the silver purity of the Roman denarius to pay for his campaigns. He prioritized the survival of the state over monetary stability.",
+      "evidence": "He reduced the silver purity of the Roman currency, the denarius."
+    },
+    {
+      "kind": "story",
+      "heading": "He failed his son",
+      "body": "Marcus raised and educated his son Commodus to be his successor. It was a disaster. His own historian, Cassius Dio, described the transition to Commodus as a descent from a kingdom of gold to one of iron and rust.",
+      "evidence": "Just one thing prevented him from being completely happy, namely, that after rearing and educating his son in the best possible way he was vastly disappointed in him."
+    },
+    {
+      "kind": "story",
+      "heading": "Duty outweighs comfort",
+      "body": "Marcus Aurelius didn't want the throne. He took it because he believed it was his duty. He lived a life of constant stress, yet he stayed the course. Your power is defined by your ability to do what is required, not what is desired.",
+      "evidence": "His training as a Stoic however, had made the choice clear to him that it was his duty."
+    },
+    {
+      "kind": "cta",
+      "heading": "Are you doing your duty?",
+      "body": "Marcus Aurelius faced plague, war, and family tragedy, yet he never abandoned his post. You have no excuse. Are you fulfilling your responsibilities or just chasing comfort? Save this. Send it to the guy who needs it.",
+      "evidence": ""
+    }
+  ]
+}

@@ -41,7 +41,12 @@ jobs:
       # Cheap guard: if someone edits the fact-check logic and breaks it,
       # this fails before anything gets queued.
       - name: Run fact-check tests
-        run: python -m unittest discover -s tests
+        run: |
+          python -m unittest discover -s tests > test_output.txt 2>&1 || {
+            echo "::error title=Tests failed::$(grep -E '^(FAIL|ERROR):|Error' test_output.txt | head -6 | tr '\n' ' ')"
+            tail -40 test_output.txt >> $GITHUB_STEP_SUMMARY
+            exit 1
+          }
 
       - name: Research next figure
         env:

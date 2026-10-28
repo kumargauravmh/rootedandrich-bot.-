@@ -2,7 +2,10 @@
   "done": [
     "Marcus Aurelius",
     "Michael Corleone",
-    "Andrew Carnegie"
+    "Andrew Carnegie",
+    "Tyrion Lannister"
   ],
-  "failures": {}
+  "failures": {
+    "The Richest Man in Babylon": 1
+  }
 }

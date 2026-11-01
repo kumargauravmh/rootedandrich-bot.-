@@ -35,7 +35,7 @@ FONT_PATHS = [
 ]
 
 BROAD_HASHTAGS = "#motivation #mindset #wealth #discipline #entrepreneur"
-OVERLAP_N = 5   # reject if 5+ consecutive words match the source
+OVERLAP_N = 8   # reject only if 8+ consecutive words match the source (same words are OK, same sentences are not)
 DAYS = 7
 RETRIES = 3
 
@@ -67,13 +67,14 @@ Performance: {likes} likes, {comments} comments on a {followers}-follower page (
 
 STEP 1 (think silently): what is the core idea, and what exact emotion makes men like/share/save it \
 (shame, anger, validation, fear of wasting time, desire for respect...)?
-STEP 2: write a NEW post that hits the same idea and the same emotion, but is clearly your own writing.
+STEP 2: write a NEW post that hits the same idea and the same emotion, in the same kind of words the source uses.
 
-Originality rules (hard):
-- Opening line style: {hook}. It must differ from how the source opens.
-- Different sentence structure and rhythm from the source.
-- Use different concrete details and images (specific situations, numbers, scenes) than the source.
-- Never reuse a run of 4 or more consecutive words from the source. Common 2-3 word phrases are fine.
+Closeness rules (hard):
+- Stay close to the source's vocabulary. Keep its everyday words and its punchiest short phrases wherever they work, so the post feels like a sibling of the source: same energy, same kind of words.
+- You can reuse key words and short phrases (up to 6 words in a row). Do NOT copy whole sentences. NEVER reuse 8 or more words in a row.
+- Change enough that it's not a clone: reorder the lines, rewrite at least half of them, and swap in at least one different concrete detail or example.
+- Opening line style: {hook}. But if the source's opening is the reason it works, keep that same kind of opening in your own words.
+- Plain words only. Write like you're texting a friend. No textbook, corporate or self-help-book words (no stewardship, resilience, cultivate, endeavor, navigate, journey, fulfillment). If a simpler word exists, use it.
 - Never mention the source, the page, or that this is inspired by anything.
 
 Voice rules:
@@ -246,6 +247,10 @@ def main():
             "hashtags": f"{post['hashtags']} {BROAD_HASHTAGS}",
             "idea_from": src["account"],
             "idea_permalink": src.get("permalink"),
+            "source_text": src.get("image_text", ""),
+            "source_caption": src.get("caption", ""),
+            "source_stats": f"{src['likes']:,} likes, {src['comments']:,} comments, "
+                            f"{src['rate']}% engagement on a {src['followers']:,}-follower page",
         })
 
     if not posts:

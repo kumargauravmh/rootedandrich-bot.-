@@ -51,6 +51,10 @@ def main():
     for p in posts:
         send_file(p["image"])
         send_text(f"DAY {p['day']} - {p['weekday']}\n\n{p['caption']}\n\n.\n.\n.\n{p['hashtags']}")
+        ref = (f"REFERENCE for day {p['day']}: @{p['idea_from']}\n"
+               f"{p.get('source_stats', '')}\n{p.get('idea_permalink') or ''}\n\n"
+               f"Original text:\n{p.get('source_text') or '(none)'}")
+        send_text(ref)
 
     print(f"Sent {len(posts)} posts to Telegram.")
 

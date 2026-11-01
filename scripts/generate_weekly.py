@@ -27,14 +27,34 @@ import gemini_util
 W, H = 1080, 1920
 BLACK = "#000000"
 WHITE = "#F0F0EC"
-LEFT_MARGIN = 90
-SAFE_TOP, SAFE_BOTTOM = 260, 1500   # keeps text clear of the Reels UI (username, caption, buttons)
+# Text lives inside a centered box so it also sits inside the profile-grid crop
+# (1:1 / 4:5 / 3:4 center crops all contain y=420..1500 and x=150..930).
+BOX_L, BOX_R = 150, 930
+BOX_T, BOX_B = 440, 1480
+START_SIZE, MIN_SIZE = 46, 28
 FONT_PATHS = [
     "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "/usr/share/fonts/dejavu/DejaVuSans.ttf",
 ]
 
-BROAD_HASHTAGS = "#motivation #mindset #wealth #discipline #entrepreneur"
+BROAD_POOL = ["#motivation", "#mindset", "#wealth", "#discipline", "#selfimprovement", "#masculinity", "#entrepreneur"]
+TOTAL_HASHTAGS = 5   # Instagram allows max 5 per post
+
+
+def build_hashtags(specific):
+    """3 specific from the model + broad ones to make exactly 5. Never more than 5."""
+    tags = []
+    for t in specific.split():
+        t = t if t.startswith("#") else "#" + t
+        if t.lower() not in [x.lower() for x in tags]:
+            tags.append(t)
+    tags = tags[:3]
+    for t in random.sample(BROAD_POOL, len(BROAD_POOL)):
+        if len(tags) >= TOTAL_HASHTAGS:
+            break
+        if t.lower() not in [x.lower() for x in tags]:
+            tags.append(t)
+    return " ".join(tags[:TOTAL_HASHTAGS])
 OVERLAP_N = 8   # reject only if 8+ consecutive words match the source (same words are OK, same sentences are not)
 DAYS = 7
 RETRIES = 2            # attempts per source post
@@ -92,10 +112,10 @@ pornographic. No slurs. No hate toward any group. Don't mock anyone's faith.
 Format:
 - image_text: 25-55 words total, 4-9 short lines separated by \\n. First line is the hook.
 - caption: 1-2 sentences that add one extra angle (not a repeat of the image), may end with a question.
-- hashtags: exactly 6 specific hashtags relevant to this post's topic, each starting with #.
+- hashtags: exactly 3 specific hashtags relevant to this post's topic, each starting with #.
 
 Return ONLY this JSON, nothing else:
-{{"image_text": "...", "caption": "...", "hashtags": "#a #b #c #d #e #f"}}
+{{"image_text": "...", "caption": "...", "hashtags": "#a #b #c"}}
 """
 
 
@@ -149,21 +169,21 @@ def wrap(draw, text, font, max_width):
 def render(image_text, out_path):
     img = Image.new("RGB", (W, H), BLACK)
     draw = ImageDraw.Draw(img)
-    max_w = W - LEFT_MARGIN * 2
-    safe_h = SAFE_BOTTOM - SAFE_TOP
+    max_w = BOX_R - BOX_L
+    box_h = BOX_B - BOX_T
 
-    size = 56
+    size = START_SIZE
     while True:
         font = load_font(size)
         lines = wrap(draw, image_text, font, max_w)
         lh = int(size * 1.5)
-        if len(lines) * lh <= safe_h or size <= 38:
+        if len(lines) * lh <= box_h or size <= MIN_SIZE:
             break
         size -= 2
 
-    y = SAFE_TOP + max(0, (safe_h - len(lines) * lh) // 2)
+    y = BOX_T + max(0, (box_h - len(lines) * lh) // 2)   # block centered vertically in the box
     for line in lines:
-        draw.text((LEFT_MARGIN, y), line, font=font, fill=WHITE)
+        draw.text((BOX_L, y), line, font=font, fill=WHITE)
         y += lh
     img.save(out_path, "PNG")
 
@@ -267,7 +287,7 @@ def main():
             "image": img_path,
             "image_text": post["image_text"],
             "caption": post["caption"],
-            "hashtags": f"{post['hashtags']} {BROAD_HASHTAGS}",
+            "hashtags": build_hashtags(post["hashtags"]),
             "idea_from": src["account"],
             "idea_permalink": src.get("permalink"),
             "source_text": src.get("image_text", ""),

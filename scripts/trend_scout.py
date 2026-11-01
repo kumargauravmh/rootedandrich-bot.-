@@ -36,7 +36,7 @@ ACCOUNTS = [
 ]
 
 APIFY_ACTOR = "apify~instagram-scraper"
-POSTS_PER_ACCOUNT = 30
+POSTS_PER_ACCOUNT = 15   # halves the Apify cost; newest posts come first
 APIFY_WAIT_SECONDS = 600
 
 LOOKBACK_DAYS = 90      # only posts from the last N days count as "trending"

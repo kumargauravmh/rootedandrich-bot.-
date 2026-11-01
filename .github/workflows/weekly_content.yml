@@ -10,6 +10,10 @@ on:
         description: 'First day of the 7 posts, as YYYY-MM-DD. Leave blank = the coming Sunday.'
         required: false
         default: ''
+      skip_scout:
+        description: 'true = do NOT call Apify (free). Reuse the trend data saved from the last run and just rewrite + resend the posts.'
+        required: false
+        default: 'false'
 
 permissions:
   contents: write
@@ -34,6 +38,7 @@ jobs:
         run: pip install pillow requests
 
       - name: Scout the reference pages
+        if: github.event.inputs.skip_scout != 'true'
         env:
           APIFY_TOKEN: ${{ secrets.APIFY_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}

@@ -1,12 +1,8 @@
 name: Rooted and Rich - Reel Post (5 a week)
 
 on:
-  schedule:
-    # GitHub runs cron jobs HOURS late, so we trigger EARLY (two tries) and the job
-    # itself waits until exactly 8:00 PM IST before publishing.
-    # Days (UTC): 6=Sat 0=Sun 1=Mon 3=Wed 5=Fri
-    - cron: '30 6 * * 6,0,1,3,5'    # 12:00 PM IST
-    - cron: '30 10 * * 6,0,1,3,5'   # 4:00 PM IST
+  # AUTO-POSTING DISABLED (Nov 1, 2026): Kumar posts manually from the weekly Telegram batch.
+  # To turn it back on, restore the `schedule:` block from git history (commit before this one).
   workflow_dispatch:
     inputs:
       dry_run:

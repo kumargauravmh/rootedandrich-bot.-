@@ -1,13 +1,8 @@
 name: Rooted and Rich - Research Next Reel
 
 on:
-  schedule:
-    # UTC. Two tries a day (10:00 AM and 10:00 PM IST) in case GitHub skips one.
-    # Each run researches ONE subject, and does nothing if 3 reels are already
-    # queued, so the queue stays ~3 posts ahead. That gap is your window to
-    # cancel or edit a queued post.
-    - cron: '30 4 * * *'
-    - cron: '30 16 * * *'
+  # SCHEDULE DISABLED (Nov 1, 2026): this only fed the old auto-post queue.
+  # Restore the `schedule:` block from git history to turn it back on.
   workflow_dispatch:
     inputs:
       dry_run:

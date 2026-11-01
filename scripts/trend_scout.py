@@ -66,7 +66,7 @@ def parse_ts(ts):
 
 
 def fetch_account(username):
-    last_err = None
+    errors = []
     for host in HOSTS:
         try:
             r = requests.get(
@@ -75,12 +75,12 @@ def fetch_account(username):
                 timeout=45,
             )
         except Exception as e:
-            last_err = f"{host}: {e}"
+            errors.append(f"[{host}] {e}")
             continue
         if r.status_code == 200 and "business_discovery" in r.json():
             return r.json()["business_discovery"]
-        last_err = f"{host}: HTTP {r.status_code} {r.text[:300]}"
-    raise RuntimeError(last_err)
+        errors.append(f"[{host}] HTTP {r.status_code} {r.text[:350]}")
+    raise RuntimeError("\n      ".join(errors))
 
 
 def analyse_account(bd):

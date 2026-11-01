@@ -1,15 +1,15 @@
 """
 trend_scout.py
 --------------
-Pulls the recent posts of the reference pages through the Instagram
-Business Discovery API (public business/creator accounts only), ranks them
+Pulls the recent posts of the reference pages through Apify's Instagram
+scraper (Instagram's own API can't read other accounts with our token type), ranks them
 by engagement relative to follower count, reads the text off the top
 image posts with Gemini vision, and writes:
 
   data/trends.json         -> the winning posts (idea source for the weekly batch)
   data/account_report.md   -> which of the 7 pages are actually worth studying
 
-Env: IG_ACCESS_TOKEN, IG_BUSINESS_ID, GEMINI_API_KEY
+Env: APIFY_TOKEN, GEMINI_API_KEY
 """
 
 import os
@@ -17,6 +17,7 @@ import re
 import sys
 import json
 import base64
+import time
 import statistics
 import requests
 from datetime import datetime, timezone, timedelta
@@ -34,8 +35,9 @@ ACCOUNTS = [
     "successskill",
 ]
 
-HOSTS = ["https://graph.instagram.com", "https://graph.facebook.com"]
-API_VER = "v21.0"
+APIFY_ACTOR = "apify~instagram-scraper"
+POSTS_PER_ACCOUNT = 30
+APIFY_WAIT_SECONDS = 600
 
 LOOKBACK_DAYS = 90      # only posts from the last N days count as "trending"
 MIN_LIKES = 150         # ignore tiny outliers
@@ -43,15 +45,7 @@ MAX_PER_ACCOUNT = 3     # don't let one page dominate
 TARGET_WINNERS = 14     # how many winning posts to keep
 MAX_VISION_CALLS = 35   # hard cap on Gemini vision calls per run
 
-TOKEN = os.environ.get("IG_ACCESS_TOKEN")
-IG_ID = os.environ.get("IG_BUSINESS_ID")
-
-FIELDS = (
-    "business_discovery.username({u})"
-    "{{username,followers_count,media_count,"
-    "media.limit(50){{caption,like_count,comments_count,media_type,"
-    "media_url,thumbnail_url,permalink,timestamp}}}}"
-)
+APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 
 OCR_PROMPT = (
     "This is an Instagram post image from a self-improvement / money / masculinity page. "
@@ -65,31 +59,54 @@ def parse_ts(ts):
     return datetime.fromisoformat(re.sub(r"\+0000$", "+00:00", ts))
 
 
-def fetch_account(username):
-    errors = []
-    for host in HOSTS:
-        try:
-            r = requests.get(
-                f"{host}/{API_VER}/{IG_ID}",
-                params={"fields": FIELDS.format(u=username), "access_token": TOKEN},
-                timeout=45,
-            )
-        except Exception as e:
-            errors.append(f"[{host}] {e}")
-            continue
-        if r.status_code == 200 and "business_discovery" in r.json():
-            return r.json()["business_discovery"]
-        errors.append(f"[{host}] HTTP {r.status_code} {r.text[:350]}")
-    raise RuntimeError("\n      ".join(errors))
+def apify_run(run_input):
+    """Start the scraper, wait for it to finish, return the dataset items."""
+    base = "https://api.apify.com/v2"
+    r = requests.post(f"{base}/acts/{APIFY_ACTOR}/runs", params={"token": APIFY_TOKEN},
+                      json=run_input, timeout=60)
+    if r.status_code not in (200, 201):
+        raise RuntimeError(f"Apify start failed HTTP {r.status_code}: {r.text[:400]}")
+    run = r.json()["data"]
+    deadline = time.time() + APIFY_WAIT_SECONDS
+    while time.time() < deadline:
+        time.sleep(8)
+        st = requests.get(f"{base}/actor-runs/{run['id']}", params={"token": APIFY_TOKEN}, timeout=30).json()["data"]
+        if st["status"] == "SUCCEEDED":
+            items = requests.get(f"{base}/datasets/{st['defaultDatasetId']}/items",
+                                 params={"token": APIFY_TOKEN, "clean": "true"}, timeout=120)
+            items.raise_for_status()
+            return items.json()
+        if st["status"] in ("FAILED", "ABORTED", "TIMED-OUT"):
+            raise RuntimeError(f"Apify run {st['status']}: {st.get('statusMessage', '')}")
+    raise RuntimeError("Apify run did not finish in time")
 
 
-def analyse_account(bd):
-    followers = bd.get("followers_count") or 0
+def parse_ts(ts):
+    return datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+
+
+def fetch_all():
+    urls = [f"https://www.instagram.com/{u}/" for u in ACCOUNTS]
+    print("Apify: fetching follower counts...")
+    details = apify_run({"directUrls": urls, "resultsType": "details", "resultsLimit": 1})
+    followers = {}
+    for d in details:
+        if d.get("username") and d.get("followersCount"):
+            followers[d["username"].lower()] = d["followersCount"]
+    print(f"Apify: got followers for {len(followers)}/{len(ACCOUNTS)} accounts")
+
+    print("Apify: fetching recent posts...")
+    posts = apify_run({"directUrls": urls, "resultsType": "posts", "resultsLimit": POSTS_PER_ACCOUNT})
+    print(f"Apify: got {len(posts)} posts")
+    return followers, posts
+
+
+def analyse(username, followers_n, raw_posts):
     cutoff = datetime.now(timezone.utc) - timedelta(days=LOOKBACK_DAYS)
     posts = []
-    for m in (bd.get("media") or {}).get("data", []):
-        likes = m.get("like_count")
-        if likes is None or not followers:   # hidden likes -> can't score
+    for m in raw_posts:
+        likes = m.get("likesCount")
+        if likes is None or likes < 0 or not followers_n:   # hidden likes -> can't score
             continue
         try:
             when = parse_ts(m["timestamp"])
@@ -97,23 +114,23 @@ def analyse_account(bd):
             continue
         if when < cutoff:
             continue
-        comments = m.get("comments_count") or 0
+        comments = max(m.get("commentsCount") or 0, 0)
         posts.append({
-            "account": bd["username"],
-            "followers": followers,
+            "account": username,
+            "followers": followers_n,
             "likes": likes,
             "comments": comments,
-            "rate": round((likes + 3 * comments) / followers * 100, 3),  # % of followers
-            "type": m.get("media_type"),
-            "image_url": m.get("media_url") if m.get("media_type") != "VIDEO" else m.get("thumbnail_url"),
+            "rate": round((likes + 3 * comments) / followers_n * 100, 3),  # % of followers
+            "type": m.get("type"),
+            "image_url": m.get("displayUrl"),
             "caption": (m.get("caption") or "").strip(),
-            "permalink": m.get("permalink"),
+            "permalink": m.get("url"),
             "date": when.date().isoformat(),
         })
 
     summary = {
-        "account": bd["username"],
-        "followers": followers,
+        "account": username,
+        "followers": followers_n,
         "posts_scored": len(posts),
         "avg_likes": round(statistics.mean(p["likes"] for p in posts)) if posts else 0,
         "median_rate": round(statistics.median(p["rate"] for p in posts), 3) if posts else 0,
@@ -136,14 +153,23 @@ def read_image_text(url):
 
 
 def main():
-    if not TOKEN or not IG_ID:
-        sys.exit("IG_ACCESS_TOKEN / IG_BUSINESS_ID not set")
+    if not APIFY_TOKEN:
+        sys.exit("APIFY_TOKEN not set")
     os.makedirs("data", exist_ok=True)
+
+    followers, raw = fetch_all()
+    by_user = {}
+    for m in raw:
+        by_user.setdefault((m.get("ownerUsername") or "").lower(), []).append(m)
 
     summaries, all_posts, failures = [], [], {}
     for user in ACCOUNTS:
         try:
-            summary, posts = analyse_account(fetch_account(user))
+            if user.lower() not in followers:
+                raise RuntimeError("no follower count returned")
+            if user.lower() not in by_user:
+                raise RuntimeError("no posts returned")
+            summary, posts = analyse(user, followers[user.lower()], by_user[user.lower()])
             summaries.append(summary)
             all_posts.extend(posts)
             print(f"[ok] {user}: {summary['posts_scored']} posts scored, "
@@ -153,7 +179,7 @@ def main():
             print(f"[FAIL] {user}: {e}")
 
     if not all_posts:
-        sys.exit("No posts could be pulled for any account. See errors above.")
+        sys.exit("No posts could be scored for any account. See errors above.")
 
     # Rank every recent post by engagement rate, then read the text off the best ones.
     candidates = sorted(

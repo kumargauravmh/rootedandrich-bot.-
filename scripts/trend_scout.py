@@ -40,10 +40,10 @@ POSTS_PER_ACCOUNT = 30
 APIFY_WAIT_SECONDS = 600
 
 LOOKBACK_DAYS = 90      # only posts from the last N days count as "trending"
-MIN_LIKES = 150         # ignore tiny outliers
-MAX_PER_ACCOUNT = 3     # don't let one page dominate
-TARGET_WINNERS = 14     # how many winning posts to keep
-MAX_VISION_CALLS = 35   # hard cap on Gemini vision calls per run
+MIN_LIKES = 100         # ignore tiny outliers
+MAX_PER_ACCOUNT = 4     # don't let one page dominate
+TARGET_WINNERS = 21     # how many winning posts to keep
+MAX_VISION_CALLS = 45   # hard cap on Gemini vision calls per run
 
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN")
 

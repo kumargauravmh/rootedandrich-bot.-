@@ -4,7 +4,12 @@ on:
   schedule:
     # Saturday 10:00 AM IST = 04:30 UTC
     - cron: '30 4 * * 6'
-  workflow_dispatch: {}   # run it manually from the Actions tab to test
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'First day of the 7 posts, as YYYY-MM-DD. Leave blank = the coming Sunday.'
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -37,6 +42,7 @@ jobs:
       - name: Write the 7 posts
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          START_DATE: ${{ github.event.inputs.start_date }}
         run: python scripts/generate_weekly.py
 
       - name: Send to Telegram

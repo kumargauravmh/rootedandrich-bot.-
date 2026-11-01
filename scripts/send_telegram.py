@@ -42,7 +42,14 @@ def main():
     with open(f"{week_dir}/week.json", encoding="utf-8") as f:
         posts = json.load(f)
 
-    intro = f"Your content for the week starting {posts[0]['date']} ({len(posts)} posts). One per day."
+    intro = f"Your content for {posts[0]['weekday'][:3]} {posts[0]['date']} to {posts[-1]['weekday'][:3]} {posts[-1]['date']} ({len(posts)} posts). One per day."
+    report_path = f"{week_dir}/report.json"
+    if os.path.exists(report_path):
+        with open(report_path, encoding="utf-8") as f:
+            failures = json.load(f).get("failures", [])
+        if failures:
+            intro += "\n\nWARNING - no post could be written for: " + ", ".join(
+                f"{x['weekday']} {x['date']}" for x in failures) + ". Run the workflow again to fill them."
     if os.path.exists("data/account_report.md"):
         with open("data/account_report.md", encoding="utf-8") as f:
             intro += "\n\n" + f.read()

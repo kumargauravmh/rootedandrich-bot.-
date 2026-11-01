@@ -37,7 +37,8 @@ FONT_PATHS = [
 BROAD_HASHTAGS = "#motivation #mindset #wealth #discipline #entrepreneur"
 OVERLAP_N = 8   # reject only if 8+ consecutive words match the source (same words are OK, same sentences are not)
 DAYS = 7
-RETRIES = 3
+RETRIES = 2            # attempts per source post
+MAX_SOURCES_PER_DAY = 4  # if a source keeps failing, try other source posts before giving up on a day
 
 HOOK_STYLES = [
     "a bold flat claim that sounds like a guarantee",
@@ -64,6 +65,9 @@ Caption:
 
 Performance: {likes} likes, {comments} comments on a {followers}-follower page ({rate}% engagement).
 --- END SOURCE ---
+
+Already written for this week's batch (do NOT repeat these ideas, openings or phrases):
+{avoid}
 
 STEP 1 (think silently): what is the core idea, and what exact emotion makes men like/share/save it \
 (shame, anger, validation, fear of wasting time, desire for respect...)?
@@ -176,6 +180,7 @@ def make_post(src, hook, done_texts):
         caption=src.get("caption") or "(none)",
         likes=src["likes"], comments=src["comments"],
         followers=f"{src['followers']:,}", rate=src["rate"], hook=hook,
+        avoid="\n".join("- " + t.replace("\n", " / ") for t in done_texts) or "(nothing yet)",
     )
     source_text = [src.get("image_text", ""), src.get("caption", "")]
     last_problem = "unknown"
@@ -196,19 +201,25 @@ def make_post(src, hook, done_texts):
             full = post["image_text"] + " " + post["caption"]
             if shares_run(full, source_text, OVERLAP_N):
                 raise ValueError("too close to source wording")
-            if shares_run(post["image_text"], done_texts, 4):
+            if shares_run(post["image_text"], done_texts, 7):
                 raise ValueError("repeats another post this week")
-            return post
+            return post, None
         except Exception as e:
             last_problem = str(e)
             print(f"   attempt {attempt} rejected: {last_problem}")
-    print(f"   giving up on this slot: {last_problem}")
-    return None
+    return None, last_problem
 
 
-def next_monday(today):
-    days_ahead = (7 - today.weekday()) % 7 or 7
-    return today + timedelta(days=days_ahead)
+def pick_start():
+    """Week runs Sunday -> Saturday. Saturday's run covers the Sunday that follows.
+    A START_DATE (YYYY-MM-DD) can be given when running manually."""
+    forced = os.environ.get("START_DATE", "").strip()
+    if forced:
+        return datetime.strptime(forced, "%Y-%m-%d").date()
+    d = datetime.now(timezone.utc).date() + timedelta(days=1)
+    while d.weekday() != 6:   # 6 = Sunday
+        d += timedelta(days=1)
+    return d
 
 
 def main():
@@ -221,18 +232,30 @@ def main():
     hooks = HOOK_STYLES[:]
     random.shuffle(hooks)
 
-    start = next_monday(datetime.now(timezone.utc).date())
+    start = pick_start()
     out_dir = f"weekly/{start.isoformat()}"
     os.makedirs(out_dir, exist_ok=True)
 
-    posts, done_texts = [], []
+    posts, done_texts, failures, used = [], [], [], {}
     for i in range(DAYS):
         day = start + timedelta(days=i)
-        src = winners[i % len(winners)]
-        hook = hooks[i % len(hooks)]
-        print(f"Day {i + 1} ({day.strftime('%a %d %b')}): idea from @{src['account']} ({src['rate']}%)")
-        post = make_post(src, hook, done_texts)
+        label = f"Day {i + 1} ({day.strftime('%a %d %b')})"
+        # least-used sources first, so a stubborn source never blocks a day
+        order = sorted(range(len(winners)), key=lambda k: (used.get(k, 0), (k - i) % len(winners)))
+        post, reasons = None, []
+        for tries, k in enumerate(order[:MAX_SOURCES_PER_DAY]):
+            src = winners[k]
+            hook = hooks[(i + tries) % len(hooks)]
+            print(f"{label}: idea from @{src['account']} ({src['rate']}%)")
+            post, problem = make_post(src, hook, done_texts)
+            if post:
+                used[k] = used.get(k, 0) + 1
+                break
+            reasons.append(f"@{src['account']}: {problem}")
+            print(f"   rejected: {problem}")
         if post is None:
+            failures.append({"day": i + 1, "date": day.isoformat(), "weekday": day.strftime("%A"), "reasons": reasons})
+            print(f"   GIVING UP on {label}")
             continue
         done_texts.append(post["image_text"])
         img_path = f"{out_dir}/day{i + 1}_{day.strftime('%a').lower()}.png"
@@ -252,6 +275,9 @@ def main():
             "source_stats": f"{src['likes']:,} likes, {src['comments']:,} comments, "
                             f"{src['rate']}% engagement on a {src['followers']:,}-follower page",
         })
+
+    with open(f"{out_dir}/report.json", "w", encoding="utf-8") as f:
+        json.dump({"failures": failures}, f, indent=2, ensure_ascii=False)
 
     if not posts:
         sys.exit("No posts generated this week - check the errors above.")
